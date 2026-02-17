@@ -55,7 +55,7 @@ int MultiplyIndex(int n, int x, int y){
     IndexToPerm(n, x, permx);
     IndexToPerm(n, y, permy);
     for(int i = 0; i < n; i++){
-        permp[i] = permy[permx[i]];
+        permp[i] = permy[(int)permx[i]];
     }
     return PermToIndex(n, permp);
 }
