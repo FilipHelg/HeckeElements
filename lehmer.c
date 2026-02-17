@@ -1,5 +1,6 @@
 #include "lehmer.h"
 
+// Unused struct. Elements are now instead indexed as integers by their Lehmer index.
 typedef struct{
     int n; // Dimension
     int x; // Lehmer index
@@ -8,13 +9,14 @@ typedef struct{
     char reducedExpression[28]; // Expression in generators [Hard-coded max length 28]
 } perm_t;
 
+// Returns factorial of n. Should be used instead of tgamma(n+1).
 int fac(int n){
     if(n == 1) return 1;
     return n * fac(n-1);
 }
 
-// Convert integer x (0 <= x < n!) to its Lehmer code.
-// Optimization: the last Lehmer digit is always 0
+// Converts index x to its Lehmer code.
+// Optimization: the last Lehmer digit is always 0. Maybe reasonable to replace by '\0'?
 char* LehmerCode(int n, int x, char code[]){
     // produce n-1 numeric digits (0..)
     for(int i = 0; i < n - 1; i++){
@@ -29,6 +31,7 @@ char* LehmerCode(int n, int x, char code[]){
     return code;
 }
 
+// Gets sum from Lehmer code, or equivalently length from Lehmer code
 int CodeSum(int n, char code[]){
     int sum = 0;
     for (int i = 0; i < n; i++){
@@ -37,6 +40,7 @@ int CodeSum(int n, char code[]){
     return sum;
 }
 
+// Gets index from Lehmer code
 int CodeToIndex(int n, char code[]){
     int sum = 0;
     for(int i = 0; i < n; i++){
@@ -45,11 +49,13 @@ int CodeToIndex(int n, char code[]){
     return sum;
 }
 
+// Gets length of element from index
 int IndexToLength(int n, int x){
     char code[8];
     return(CodeSum(n, LehmerCode(n, x, code)));
 }
 
+// Returns index of the composition x*y. Not y*x.
 int MultiplyIndex(int n, int x, int y){
     char permx[8], permy[8], permp[8];
     IndexToPerm(n, x, permx);
@@ -60,6 +66,7 @@ int MultiplyIndex(int n, int x, int y){
     return PermToIndex(n, permp);
 }
 
+// Returns index of permutation
 int PermToIndex(int n, char* perm){
     char code[8];
     for(int i = 0; i < n; i++){
@@ -70,6 +77,7 @@ int PermToIndex(int n, char* perm){
     return CodeToIndex(n, code);
 }
 
+// Puts the permutation of index x into perm
 void IndexToPerm(int n, int x, char* perm){
     char code[8];
     LehmerCode(n, x, code);
@@ -86,6 +94,7 @@ void IndexToPerm(int n, int x, char* perm){
     return;
 }
 
+// Gets one generator index [UNUSED?]
 int FirstGeneratorIndex(int n, int x){
     int s_i = x/(int)tgamma(n);
     return s_i;

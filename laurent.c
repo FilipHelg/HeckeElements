@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include "laurent.h"
 
+// Returns a new Laurent polynomial with all coefficients set to zero
 Laurent_t ZeroInitializeLaurent(){
     Laurent_t poly;
     for(int i = 0; i < 57; i++){
@@ -9,6 +10,7 @@ Laurent_t ZeroInitializeLaurent(){
     return poly;
 }
 
+// Checks if a Laurent polynomial is non-zero. Returns 1/0 for true/false.
 int HasNonZero(const Laurent_t *p){
     for(int j = 0; j < 57; j++){
         if(p->coeff[j] != 0) return 1;
@@ -16,6 +18,7 @@ int HasNonZero(const Laurent_t *p){
     return 0;
 }
 
+// Prints a Laurent polynomial in the terminal. Mostly used inline for DisplayHecke.
 void DisplayLaurentPoly(Laurent_t poly){
     int first = 1;
     for(int i = 0; i < 57; i++){
@@ -27,6 +30,7 @@ void DisplayLaurentPoly(Laurent_t poly){
     }
 }
 
+// Returns the sum of two Laurent polynomials
 Laurent_t SumLaurent(Laurent_t l1,  Laurent_t l2){
     Laurent_t sum = ZeroInitializeLaurent();
     for(int i = 0; i < 57; i++){
@@ -35,6 +39,7 @@ Laurent_t SumLaurent(Laurent_t l1,  Laurent_t l2){
     return sum;
 }
 
+// Returns the product of two Laurent polynomials
 Laurent_t MultiplyLaurent(Laurent_t l1, Laurent_t l2){
     Laurent_t product = ZeroInitializeLaurent();
     for(int i = 0; i < 57; i++){
