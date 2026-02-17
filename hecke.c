@@ -301,8 +301,8 @@ int main(){
     /// Test of MultiplyHecke ///
 
     if(TEST_MULTHECKE){
-        int n = 8;
-        int count = (int)tgamma(n+1);
+        int n = 8; // Determines S_n
+        int count = fac(n);
         Laurent_t *h1 = (Laurent_t*)calloc((size_t)count, sizeof(Laurent_t)), *h2 = (Laurent_t*)calloc((size_t)count, sizeof(Laurent_t));
 
         //Initialize 1
