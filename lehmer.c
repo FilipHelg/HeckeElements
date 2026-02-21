@@ -118,3 +118,50 @@ int ReducedExpression(int n, int x, char expression[]){
     }
     return counter;
 }
+
+int BruhatSmaller(int n, int w1, int w2){
+    char* exp1 = (char*)calloc(28, sizeof(char));
+    char* exp2 = (char*)calloc(28, sizeof(char));
+    ReducedExpression(n, w1, exp1);
+    ReducedExpression(n, w2, exp2);
+
+    //printf("Reduced expression for %d: ", w1); for(int i = 0; i < 28; i++) printf("%d ", exp1[i]); printf("\n");
+    //printf("Reduced expression for %d: ", w2); for(int i = 0; i < 28; i++) printf("%d ", exp2[i]); printf("\n");
+
+    int i = 0;
+    for(int j = 0; j < 28; j++){
+        //printf("exp1: %d\n", exp1[i]);
+        if(exp1[j] == 0){
+            free(exp1);
+            free(exp2);
+            //printf("Returned since exp1[%d] = 0\n", j);
+            return 1;
+        } 
+        
+        int found = 0;
+        for(int k = i; k < 28; k++){
+            if(exp2[k] == exp1[j]){
+                //printf("Found %d at k = %d and j = %d!\n", exp1[j], k, j);
+                found = 1;
+                i = k + 1;
+                break;
+            }
+        }
+
+        if(found == 0){
+            //printf("Returned due to not finding %d at j = %d\n", exp1[j], j);
+            free(exp1);
+            free(exp2);
+            return 0;
+        } 
+
+    }
+    free(exp1);
+    free(exp2);
+    //printf("Base case return!\n");
+    return 1;
+}
+
+int** ChainDFS(int n, int w1, int w2){
+    
+}

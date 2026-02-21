@@ -12,3 +12,4 @@ int PermToIndex(int n, char* perm);
 int MultiplyIndex(int n, int x, int y);
 int FirstGeneratorIndex(int n, int x);
 int ReducedExpression(int n, int x, char expression[]);
+int BruhatSmaller(int n, int w1, int w2);

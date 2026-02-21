@@ -119,6 +119,56 @@ Laurent_t* MultiplyHecke(int n, Laurent_t H1[], Laurent_t H2[]){
     }
 }*/
 
+
+// Takes to elements w1 <= w2 and finds their R-polynomial R_w1;w2
+Laurent_t FindR(int n, int w1, int w2){
+    Laurent_t result = ZeroInitializeLaurent();
+    //printf("Bruhat between %d and %d: %d\n", w1, w2, BruhatSmaller(n, w1, w2));
+    if(w1 == w2){
+        result.coeff[28] = 1; //constant 1
+        return result;
+    }else if(BruhatSmaller(n, w1, w2)){
+        char* exp = (char*)calloc(28, sizeof(char));
+        ReducedExpression(n, w2, exp);
+        int s = 0;
+        
+        // Find s
+        for(int k = 27; k >= 0; k--){
+            if(exp[k] != 0){
+                s = fac(n - exp[k]);
+                break;
+            }
+        }
+
+        int w1s = MultiplyIndex(n, w1, s);
+        int w2s = MultiplyIndex(n, w2, s);
+        if(IndexToLength(n, w1s) < IndexToLength(n, w1)){
+            free(exp);
+            return FindR(n, w1s, w2s);
+        }else{
+            Laurent_t result = ZeroInitializeLaurent(), v = ZeroInitializeLaurent(), vminus1 = ZeroInitializeLaurent();
+            v.coeff[29] = 1;
+            vminus1.coeff[28] = -1;
+            vminus1.coeff[29] = 1;
+            result = SumLaurent(MultiplyLaurent(v, FindR(n, w1s, w2s)), MultiplyLaurent(vminus1, FindR(n, w1, w2s)));
+
+            free(exp);
+            return result;
+        }
+    }else{
+        return result;
+    }
+}
+
+Laurent_t RfromChain(int n, int l, int* chain){
+    if(l == 1) return FindR(n, chain[0], chain[1]);
+    int* newChain = &chain[1];
+    int d = IndexToLength(n, chain[l]) - IndexToLength(n, chain[1]);
+    printf("Calling recursively on l = %d\n", l-1);
+    return MultiplyLaurent(FindR(n, chain[0], chain[1]), Cutoff(RfromChain(n, l-1, newChain), (d-1)/2));
+}
+
+
 void SetKL(int n, int x, Laurent_t KLelement[]){
     char l = IndexToLength(n, x);
     if(l == 0){
@@ -196,8 +246,12 @@ Laurent_t* MultiplyHecke2(int n, Laurent_t H1[], Laurent_t H2[]){
 #define TEST_LAURENT 0
 #define TEST_DISPLAYHECKE 0
 #define TEST_MULTSIMPLEHECKE 0
-#define TEST_MULTHECKE 1
+#define TEST_MULTHECKE 0
 #define TEST_ALTERNATE 0
+#define TEST_BRUHAT 0
+#define TEST_FINDR 1
+#define TEST_CUTOFF 0
+#define TEST_RFROMCHAIN 0
 
 int main(){
     /// TESTS ///
@@ -384,5 +438,65 @@ int main(){
         free(prod);
     }
 
-    printf("\n Remember: Measure-Command { ./hecke } to test run time!\n");
+    if(TEST_BRUHAT){
+        printf("%d\n", BruhatSmaller(4, 0, 1));
+        printf("%d\n", BruhatSmaller(4, 2, 1));
+        printf("%d\n", BruhatSmaller(4, 1, 3));
+        printf("%d\n", BruhatSmaller(4, 4, 5));
+        printf("%d\n", BruhatSmaller(4, 9, 17));
+        printf("%d\n", BruhatSmaller(4, 9, 19));
+        printf("%d\n", BruhatSmaller(4, 11, 23));
+        printf("%d\n", BruhatSmaller(8, 40318, 40319));
+        printf("%d\n", BruhatSmaller(8, 40319, 40319));
+    }
+
+    if(TEST_FINDR){
+        int n = 4;
+        int x = 0;
+        int y = 23;
+        Laurent_t R = FindR(n, x, y);
+        DisplayLaurentPoly(R); printf("\n");
+
+        n = 4;
+        x = 11;
+        y = 23;
+        R = FindR(n, x, y);
+        DisplayLaurentPoly(R); printf("\n");
+
+        n = 8;
+        x = 0;
+        y = 40319;
+        R = FindR(n, x, y);
+        DisplayLaurentPoly(R); printf("\n");
+    }
+
+    if(TEST_CUTOFF){
+        Laurent_t poly = ZeroInitializeLaurent(), poly2;
+        poly.coeff[28] = 1;
+        poly.coeff[29] = 1;
+        poly.coeff[30] = 1;
+        poly.coeff[31] = 1;
+        poly2 = Cutoff(poly, 1);
+        DisplayLaurentPoly(poly); printf("\n");
+        DisplayLaurentPoly(poly2); printf("\n");
+    }
+
+    if(TEST_RFROMCHAIN){
+        int chain[3] = {6, 11, 23};
+        int l = 2, n = 4;
+        Laurent_t poly = RfromChain(n, l, chain);
+        printf("Final chain R-polynomial: "); DisplayLaurentPoly(poly); printf("\n");
+
+        int chain2[4] = {0, 6, 11, 23};
+        l = 3; n = 4;
+        poly = RfromChain(n, l, chain2);
+        printf("Final chain2 R-polynomial: "); DisplayLaurentPoly(poly); printf("\n");
+
+        int chain3[4] = {0, 34, 327, 596};
+        l = 3; n = 6;
+        poly = RfromChain(n, l, chain3);
+        printf("Final chain3 R-polynomial: "); DisplayLaurentPoly(poly); printf("\n");
+    }
+
+    printf("\nRemember: Measure-Command { ./hecke } to test run time!\n");
 }
