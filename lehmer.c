@@ -15,6 +15,11 @@ int fac(int n){
     return n * fac(n-1);
 }
 
+int powint(int x, int n){
+    if(n == 1) return x;
+    return x * pow(x, n - 1);
+}
+
 // Converts index x to its Lehmer code.
 // Optimization: the last Lehmer digit is always 0. Maybe reasonable to replace by '\0'?
 char* LehmerCode(int n, int x, char code[]){
@@ -162,6 +167,10 @@ int BruhatSmaller(int n, int w1, int w2){
     return 1;
 }
 
-int** ChainDFS(int n, int w1, int w2){
-    
+int TrueBruhatSmaller(int n, int w1, int w2){
+    if(w1 == w2){
+        return 0;
+    }else{
+        return BruhatSmaller(n, w1, w2);
+    }
 }

@@ -168,6 +168,115 @@ Laurent_t RfromChain(int n, int l, int* chain){
     return MultiplyLaurent(FindR(n, chain[0], chain[1]), Cutoff(RfromChain(n, l-1, newChain), (d-1)/2));
 }
 
+int mu(int n, int x, int y);
+
+Laurent_t FindKLh(int n, int x, int y){
+    Laurent_t result = ZeroInitializeLaurent();
+    if(x == y){
+        result.coeff[28] = 1;
+        printf("Returned due to x = y! x = %d y = %d\n", x, y);
+        printf("Result: "); DisplayLaurentPoly(result); printf("\n");
+        return result;
+    }else if(BruhatSmaller(n, y, x) == 0){
+        printf("Returned due to not bruhat smaller! x = %d y = %d\n", x, y);
+        printf("Result: "); DisplayLaurentPoly(result); printf("\n");
+        return result;
+    }else{
+        char* exp = (char*)calloc(28, sizeof(char));
+        ReducedExpression(n, x, exp);
+        int s = 0;
+        if(x != 0) s = fac(n - exp[0]);
+
+        if(IndexToLength(n, MultiplyIndex(n, s, y)) < IndexToLength(n, y)){
+            printf("Returned due to sy < y! x = %d y = %d\n", x, y);
+            printf("Result: "); DisplayLaurentPoly(result); printf("\n");
+            return FindKLh(n, MultiplyIndex(n, s, x), MultiplyIndex(n, s, y));
+        }else{
+            printf("True recursion started for x = %d y = %d s = %d\n", x, y, s);
+            printf("WE HAVE S = %d FOR X = %d\n", s, x);
+            Laurent_t v2 = ZeroInitializeLaurent(), v = ZeroInitializeLaurent(), vMinusVInverse = ZeroInitializeLaurent(), firstTerm = ZeroInitializeLaurent(), secondTerm = ZeroInitializeLaurent(), sum = ZeroInitializeLaurent();
+            v.coeff[29] = 1;
+            v2.coeff[30] = 1;
+            vMinusVInverse.coeff[29] = 1;
+            vMinusVInverse.coeff[27] = -1;
+
+            //firstTerm = MultiplyLaurent(v2, FindKLh(n, MultiplyIndex(n, s, x), MultiplyIndex(n, s, y)));
+            //secondTerm = MultiplyLaurent(v2minus1, FindKLh(n, MultiplyIndex(n, s, x), y));
+            firstTerm = FindKLh(n, MultiplyIndex(n, s, x), MultiplyIndex(n, s, y));
+            secondTerm = MultiplyLaurent(vMinusVInverse, FindKLh(n, MultiplyIndex(n, s, x), y));
+            
+            
+            printf("First term for x = %d y = %d: ", x , y); DisplayLaurentPoly(firstTerm); printf("\n");
+            printf("Second term for x = %d y = %d: ", x , y); DisplayLaurentPoly(secondTerm); printf("\n");
+
+            result = SumLaurent(firstTerm, secondTerm);
+            
+            int* livingElements = (int*)calloc(n, sizeof(int));
+            int* newLivingElements = (int*)calloc(n*n, sizeof(int));
+            int k = 0, newK = 0;
+
+            for(int l = 0; l < fac(n); l++){
+                int z = MultiplyIndex(n, l, y);
+                int sz = MultiplyIndex(n, s, z);
+                int sx = MultiplyIndex(n, s, x);
+                if(TrueBruhatSmaller(n, z, sx) && IndexToLength(n, sz) < IndexToLength(n, z)){
+                    livingElements[k] = z;
+                    k++;
+                }
+            }
+
+            for(int i = 1; i < IndexToLength(n, MultiplyIndex(n, s, x)) - IndexToLength(n, y); i++){
+                for(int j = 0; j < k; j++){
+                    Laurent_t newTerm = ZeroInitializeLaurent(), vfactor = ZeroInitializeLaurent(), vInverse = ZeroInitializeLaurent();
+                    newTerm.coeff[28] = -mu(n, livingElements[j], MultiplyIndex(n, s, x));
+                    vfactor.coeff[28 + IndexToLength(n, y) - IndexToLength(n, livingElements[j]) - 1] = 1;
+                    vInverse.coeff[27] = 1;
+
+                    //newTerm = MultiplyLaurent(newTerm, MultiplyLaurent(vfactor, FindKLh(n, livingElements[j], y)));
+                    newTerm = MultiplyLaurent(newTerm, MultiplyLaurent(vInverse, FindKLh(n, x, livingElements[j])));
+                    result = SumLaurent(result, newTerm);
+
+                    printf("New term for x = %d y = %d: ", x, y); DisplayLaurentPoly(newTerm); printf("\n");
+
+                    for(int l = 0; l < fac(n); l++){
+                        int z = MultiplyIndex(n, l, livingElements[j]);
+                        int sz = MultiplyIndex(n, s, z);
+                        int sx = MultiplyIndex(n, s, x);
+                        if(TrueBruhatSmaller(n, z, sx) && IndexToLength(n, sz) < IndexToLength(n, z)){
+                            newLivingElements[newK] = z;
+                            newK++;
+                        }
+                    }
+
+                }
+                free(livingElements);
+                livingElements = newLivingElements;
+                newLivingElements = (int*)calloc(powint(n, i + 2), sizeof(int));
+                k = newK;
+                newK = 0;
+            }
+            free(livingElements);
+            free(newLivingElements);
+            printf("Returned in true recursion sy > y! x = %d y = %d\n", x, y);
+            printf("Result: "); DisplayLaurentPoly(result); printf("\n");
+            return result;
+        }
+    }
+}
+
+int mu(int n, int x, int y){
+    Laurent_t poly;
+    if(BruhatSmaller(n, y, x)){
+        poly = FindKLh(n, x, y);
+    } 
+    else {
+        poly = FindKLh(n, y, x);
+    }
+    printf("Mu(%d, %d) = %d\n", x, y, poly.coeff[29]);
+    return poly.coeff[29];
+}
+
+
 
 void SetKL(int n, int x, Laurent_t KLelement[]){
     char l = IndexToLength(n, x);
@@ -249,9 +358,10 @@ Laurent_t* MultiplyHecke2(int n, Laurent_t H1[], Laurent_t H2[]){
 #define TEST_MULTHECKE 0
 #define TEST_ALTERNATE 0
 #define TEST_BRUHAT 0
-#define TEST_FINDR 1
+#define TEST_FINDR 0
 #define TEST_CUTOFF 0
 #define TEST_RFROMCHAIN 0
+#define TEST_FINDKLH 1
 
 int main(){
     /// TESTS ///
@@ -496,6 +606,11 @@ int main(){
         l = 3; n = 6;
         poly = RfromChain(n, l, chain3);
         printf("Final chain3 R-polynomial: "); DisplayLaurentPoly(poly); printf("\n");
+    }
+
+    if(TEST_FINDKLH){
+        int n = 3, x = 1, y = 0;
+        DisplayLaurentPoly(FindKLh(n, x, y));
     }
 
     printf("\nRemember: Measure-Command { ./hecke } to test run time!\n");
