@@ -1,5 +1,7 @@
 #include "lehmer.h"
 
+static int FACT_TABLE[9] = {1,1,2,6,24,120,720,5040,40320};
+
 // Unused struct. Elements are now instead indexed as integers by their Lehmer index.
 typedef struct{
     int n; // Dimension
@@ -173,4 +175,46 @@ int TrueBruhatSmaller(int n, int w1, int w2){
     }else{
         return BruhatSmaller(n, w1, w2);
     }
+}
+
+// Returns an array ElementsBetween where ElementsBetween[0] is the number of elements and ElementsBetween[1] and forward are the indices of those elements
+int* ElementsBetween(int n, int x, int y){
+    if(!BruhatSmaller(n , x, y)){
+        int* result = (int*)calloc(1, sizeof(int));
+        return result;
+    }
+    int startLength = IndexToLength(n, x);
+    int stopLength = IndexToLength(n, y);
+
+    int k = 1;
+    int startk = 1;
+    int stopk = 1;
+    int* elementList = (int*)calloc(40321, sizeof(int));
+    elementList[1] = x;
+
+    int* seen = (int*)calloc(40320, sizeof(int));  // bitmap for S_8
+
+    int innerloopcount = 0;
+    
+    for(int i = startLength + 1; i <= stopLength; i++){
+        for(int l = startk; l <= stopk; l++){
+            for(int j = 1; j < 8; j++){
+                innerloopcount++;
+                int s = FACT_TABLE[n - j];
+                int ws = MultiplyIndex(n, elementList[l], s);
+                if(!seen[ws]){
+                    if(IndexToLength(n, ws) == i && BruhatSmaller(n, ws, y)){
+                        elementList[k+1] = ws;
+                        seen[ws] = 1;
+                        k++;
+                    }
+                }
+            }
+        }
+        startk = stopk + 1;
+        stopk = k;
+    }
+    elementList[0] = k;
+    printf("Inner loop count: %d\n", innerloopcount);
+    return elementList;
 }

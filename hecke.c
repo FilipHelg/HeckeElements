@@ -4,6 +4,11 @@
 #include "lehmer.h"
 #include "laurent.h"
 
+Laurent_t** Rpolys;
+int** Rpolybitmap;
+FILE *RFilePointer;
+FILE *RBitmapPointer;
+
 // Zero initializes all coefficients of a Hecke element [UNUSED?]
 void SetToZero(int n, Laurent_t H[]){
     for (int i = 0; i < tgamma(n + 1); i++){
@@ -276,7 +281,32 @@ int mu(int n, int x, int y){
     return poly.coeff[29];
 }
 
-
+// Implementation av Theorem 4 ur s49brenti
+Laurent_t FindKLP(int n, int x, int y){
+    Laurent_t result = ZeroInitializeLaurent();
+    if(x == y){
+        result.coeff[28] = 1;
+        return result;
+    }else if(BruhatSmaller(n, x, y) == 0){
+        return result;
+    }else{
+        Laurent_t sum = ZeroInitializeLaurent();
+        int* elementsToSumOver = ElementsBetween(n, x, y);
+        for(int i = 1; i <= elementsToSumOver[0]; i++){
+            int a = elementsToSumOver[i];
+            sum = SumLaurent(sum, MultiplyLaurent(FindR(n, x, a), FindKLP(n, a, y)));
+        }
+        Laurent_t q_lengthFactor = ZeroInitializeLaurent();
+        q_lengthFactor.coeff[28 + IndexToLength(n, x) - IndexToLength(n, y)] = 1;
+        result = MultiplyLaurent(q_lengthFactor, sum);
+        for(int i = 1; i <= 28; i++){
+            int temp = result.coeff[28 + i];
+            result.coeff[28 + i] = result.coeff[28 - i];
+            result.coeff[28 - i] = temp;
+        }
+        return result;
+    }
+}
 
 void SetKL(int n, int x, Laurent_t KLelement[]){
     char l = IndexToLength(n, x);
@@ -361,9 +391,23 @@ Laurent_t* MultiplyHecke2(int n, Laurent_t H1[], Laurent_t H2[]){
 #define TEST_FINDR 0
 #define TEST_CUTOFF 0
 #define TEST_RFROMCHAIN 0
-#define TEST_FINDKLH 1
+#define TEST_FINDKLH 0
+#define TEST_ELEMENTSBETWEEN 0
+#define TEST_FINDKLP 1
 
 int main(){
+    
+    /*Rpolys = (Laurent_t**)calloc(40320*40320, sizeof(Laurent_t));
+    Rpolybitmap = (int**)calloc(40320*40320, sizeof(int));
+    RFilePointer = fopen("RPolyFile", "rb");
+    RBitmapPointer = fopen("RPolyBitmap", "rb");
+    fread(Rpolys, sizeof(Laurent_t), 40320*40320, RFilePointer);
+    fread(Rpolybitmap, sizeof(int), 40320*40320, RBitmapPointer);
+    fclose(RFilePointer);
+    fclose(RBitmapPointer);*/
+
+
+
     /// TESTS ///
 
     if(TEST_INDEXTOPERM){
@@ -612,6 +656,40 @@ int main(){
         int n = 3, x = 1, y = 0;
         DisplayLaurentPoly(FindKLh(n, x, y));
     }
+
+    if(TEST_ELEMENTSBETWEEN){
+        int *elements = ElementsBetween(3, 0, 5);
+        for(int i = 0; i <= elements[0]; i++) printf("%d\n", elements[i]);
+
+        elements = ElementsBetween(3, 0, 1);
+        for(int i = 0; i <= elements[0]; i++) printf("%d\n", elements[i]);
+        elements = ElementsBetween(3, 0, 2);
+        for(int i = 0; i <= elements[0]; i++) printf("%d\n", elements[i]);
+        elements = ElementsBetween(3, 0, 3);
+        for(int i = 0; i <= elements[0]; i++) printf("%d\n", elements[i]);
+        elements = ElementsBetween(3, 0, 4);
+        for(int i = 0; i <= elements[0]; i++) printf("%d\n", elements[i]);
+        elements = ElementsBetween(4, 0, 23);
+        for(int i = 0; i <= elements[0]; i++) printf("%d\n", elements[i]);
+        elements = ElementsBetween(5, 0, 119);
+        for(int i = 0; i <= elements[0]; i++) printf("%d\n", elements[i]);
+        elements = ElementsBetween(8, 0, 40319);
+        printf("# of elements between: %d\n", elements[0]);
+        elements = ElementsBetween(8, 3457, 40319);
+        printf("# of elements between: %d\n", elements[0]);
+    }
+
+    if(TEST_FINDKLP){
+        Laurent_t poly = FindKLP(3, 0, 5);
+        DisplayLaurentPoly(poly);
+    }
+
+    /*RFilePointer = fopen("RPolyFile", "wb");
+    RBitmapPointer = fopen("RPolyBitmap", "wb");
+    fwrite(Rpolys, sizeof(Laurent_t), 40320*40320, RFilePointer);
+    fwrite(Rpolybitmap, sizeof(int), 40320*40320, RBitmapPointer);
+    fclose(RFilePointer);
+    fclose(RBitmapPointer);*/
 
     printf("\nRemember: Measure-Command { ./hecke } to test run time!\n");
 }
