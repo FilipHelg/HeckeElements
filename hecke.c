@@ -396,12 +396,12 @@ Laurent_t* MultiplyHecke2(int n, Laurent_t H1[], Laurent_t H2[]){
 #define TEST_MULTHECKE 0
 #define TEST_ALTERNATE 0
 #define TEST_BRUHAT 0
-#define TEST_FINDR 0
+#define TEST_FINDR 1
 #define TEST_CUTOFF 0
 #define TEST_RFROMCHAIN 0
 #define TEST_FINDKLH 0
 #define TEST_ELEMENTSBETWEEN 0
-#define TEST_FINDKLP 1
+#define TEST_FINDKLP 0
 
 int main(){
     
