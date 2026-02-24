@@ -218,3 +218,16 @@ int* ElementsBetween(int n, int x, int y){
     printf("Inner loop count: %d\n", innerloopcount);
     return elementList;
 }
+
+int* ElementsBetween2(int n, int x, int y){
+    int* result = (int*)calloc(fac(n) + 1, sizeof(int));
+    int k = 0;
+    for(int i = 0; i < fac(n); i++){
+        if(BruhatSmaller(n, x, i) && BruhatSmaller(n, i, y)){
+            k++;
+            result[k] = i;
+        }
+    }
+    result[0] = k;
+    return result;
+}

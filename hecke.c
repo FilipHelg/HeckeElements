@@ -286,24 +286,32 @@ Laurent_t FindKLP(int n, int x, int y){
     Laurent_t result = ZeroInitializeLaurent();
     if(x == y){
         result.coeff[28] = 1;
+        printf("x = y in KL\n");
         return result;
     }else if(BruhatSmaller(n, x, y) == 0){
+        printf("x not bruhat smaller than y in KL\n");
         return result;
     }else{
+        printf("x bruhat smaller than y in KL\n");
         Laurent_t sum = ZeroInitializeLaurent();
         int* elementsToSumOver = ElementsBetween(n, x, y);
-        for(int i = 1; i <= elementsToSumOver[0]; i++){
+        for(int i = 2; i <= elementsToSumOver[0]; i++){
             int a = elementsToSumOver[i];
+            printf("%d\n", a);
             sum = SumLaurent(sum, MultiplyLaurent(FindR(n, x, a), FindKLP(n, a, y)));
         }
-        Laurent_t q_lengthFactor = ZeroInitializeLaurent();
+        /*Laurent_t q_lengthFactor = ZeroInitializeLaurent();
         q_lengthFactor.coeff[28 + IndexToLength(n, x) - IndexToLength(n, y)] = 1;
         result = MultiplyLaurent(q_lengthFactor, sum);
         for(int i = 1; i <= 28; i++){
             int temp = result.coeff[28 + i];
             result.coeff[28 + i] = result.coeff[28 - i];
             result.coeff[28 - i] = temp;
-        }
+        }*/
+        result = Cutoff(sum, (IndexToLength(n, y) - IndexToLength(n, x) - 1)/2);
+        Laurent_t neg = ZeroInitializeLaurent();
+        neg.coeff[28] = -1;
+        result = MultiplyLaurent(neg, result);
         return result;
     }
 }
@@ -388,12 +396,12 @@ Laurent_t* MultiplyHecke2(int n, Laurent_t H1[], Laurent_t H2[]){
 #define TEST_MULTHECKE 0
 #define TEST_ALTERNATE 0
 #define TEST_BRUHAT 0
-#define TEST_FINDR 1
+#define TEST_FINDR 0
 #define TEST_CUTOFF 0
 #define TEST_RFROMCHAIN 0
 #define TEST_FINDKLH 0
 #define TEST_ELEMENTSBETWEEN 0
-#define TEST_FINDKLP 0
+#define TEST_FINDKLP 1
 
 int main(){
     
@@ -622,6 +630,12 @@ int main(){
         y = 40319;
         R = FindR(n, x, y);
         DisplayLaurentPoly(R); printf("\n");
+
+        n = 8;
+        x = 20000;
+        y = 40319;
+        R = FindR(n, x, y);
+        DisplayLaurentPoly(R); printf("\n");
     }
 
     if(TEST_CUTOFF){
@@ -680,8 +694,11 @@ int main(){
     }
 
     if(TEST_FINDKLP){
-        Laurent_t poly = FindKLP(3, 0, 5);
-        DisplayLaurentPoly(poly);
+        Laurent_t poly = FindKLP(3, 0, 1);
+        DisplayLaurentPoly(poly); printf("\n");
+
+        poly = FindKLP(3, 0, 5);
+        DisplayLaurentPoly(poly); printf("\n");
     }
 
     /*RFilePointer = fopen("RPolyFile", "wb");
