@@ -169,17 +169,37 @@ int BruhatSmaller(int n, int w1, int w2){
     return 1;
 }
 
+// Correct Bruhat order using rank matrix criterion:
+// x <= y iff for all i, j: #{k <= i : x[k] >= j} <= #{k <= i : y[k] >= j}
+int BruhatSmaller2(int n, int w1, int w2) {
+    char permx[8], permy[8];
+    IndexToPerm(n, w1, permx);
+    IndexToPerm(n, w2, permy);
+    
+    for(int i = 0; i < n; i++) {
+        for(int j = 0; j < n; j++) {
+            int rx = 0, ry = 0;
+            for(int k = 0; k <= i; k++) {
+                if(permx[k] >= j) rx++;
+                if(permy[k] >= j) ry++;
+            }
+            if(rx > ry) return 0;
+        }
+    }
+    return 1;
+}
+
 int TrueBruhatSmaller(int n, int w1, int w2){
     if(w1 == w2){
         return 0;
     }else{
-        return BruhatSmaller(n, w1, w2);
+        return BruhatSmaller2(n, w1, w2);
     }
 }
 
 // Returns an array ElementsBetween where ElementsBetween[0] is the number of elements and ElementsBetween[1] and forward are the indices of those elements
 int* ElementsBetween(int n, int x, int y){
-    if(!BruhatSmaller(n , x, y)){
+    if(!BruhatSmaller2(n , x, y)){
         int* result = (int*)calloc(1, sizeof(int));
         return result;
     }
@@ -203,7 +223,7 @@ int* ElementsBetween(int n, int x, int y){
                 int s = FACT_TABLE[n - j];
                 int ws = MultiplyIndex(n, elementList[l], s);
                 if(!seen[ws]){
-                    if(IndexToLength(n, ws) == i && BruhatSmaller(n, ws, y)){
+                    if(IndexToLength(n, ws) == i && BruhatSmaller2(n, ws, y)){
                         elementList[k+1] = ws;
                         seen[ws] = 1;
                         k++;
@@ -223,7 +243,7 @@ int* ElementsBetween2(int n, int x, int y){
     int* result = (int*)calloc(fac(n) + 1, sizeof(int));
     int k = 0;
     for(int i = 0; i < fac(n); i++){
-        if(BruhatSmaller(n, x, i) && BruhatSmaller(n, i, y)){
+        if(BruhatSmaller2(n, x, i) && BruhatSmaller2(n, i, y)){
             k++;
             result[k] = i;
         }

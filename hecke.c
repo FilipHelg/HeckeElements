@@ -126,41 +126,48 @@ Laurent_t* MultiplyHecke(int n, Laurent_t H1[], Laurent_t H2[]){
 
 
 // Takes to elements w1 <= w2 and finds their R-polynomial R_w1;w2
+// Uses LEFT descents: finds leftmost generator s in reduced expression for w2,
+// then uses s*w1 and s*w2 (left multiplication)
 Laurent_t FindR(int n, int w1, int w2){
     Laurent_t result = ZeroInitializeLaurent();
-    //printf("Bruhat between %d and %d: %d\n", w1, w2, BruhatSmaller(n, w1, w2));
     if(w1 == w2){
         result.coeff[28] = 1; //constant 1
+        //printf("FindR(%d,%d) = 1 (base case)\n", w1, w2);
         return result;
-    }else if(BruhatSmaller(n, w1, w2)){
+    }else if(BruhatSmaller2(n, w1, w2)){
         char* exp = (char*)calloc(28, sizeof(char));
-        ReducedExpression(n, w2, exp);
+        int len = ReducedExpression(n, w2, exp);
         int s = 0;
         
-        // Find s
-        for(int k = 27; k >= 0; k--){
-            if(exp[k] != 0){
-                s = fac(n - exp[k]);
-                break;
-            }
-        }
+        // Find s - use LEFTMOST generator (index 0)
+        s = fac(n - exp[0]);
 
-        int w1s = MultiplyIndex(n, w1, s);
-        int w2s = MultiplyIndex(n, w2, s);
-        if(IndexToLength(n, w1s) < IndexToLength(n, w1)){
+        // Use LEFT multiplication (s*w) instead of right (w*s)
+        int sw1 = MultiplyIndex(n, s, w1);
+        int sw2 = MultiplyIndex(n, s, w2);
+        
+        //printf("FindR(%d,%d): s=s%d(idx %d), s*%d=%d, s*%d=%d\n", 
+        //       w1, w2, exp[0], s, w1, sw1, w2, sw2);
+        
+        if(IndexToLength(n, sw1) < IndexToLength(n, w1)){
+            // s is also a left descent of w1
+            //printf("  Both descend -> R(%d,%d)\n", sw1, sw2);
             free(exp);
-            return FindR(n, w1s, w2s);
+            return FindR(n, sw1, sw2);
         }else{
+            // s is not a left descent of w1
+            //printf("  Only w2 descends -> v*R(%d,%d) + (v-1)*R(%d,%d)\n", sw1, sw2, w1, sw2);
             Laurent_t result = ZeroInitializeLaurent(), v = ZeroInitializeLaurent(), vminus1 = ZeroInitializeLaurent();
             v.coeff[29] = 1;
             vminus1.coeff[28] = -1;
             vminus1.coeff[29] = 1;
-            result = SumLaurent(MultiplyLaurent(v, FindR(n, w1s, w2s)), MultiplyLaurent(vminus1, FindR(n, w1, w2s)));
+            result = SumLaurent(MultiplyLaurent(v, FindR(n, sw1, sw2)), MultiplyLaurent(vminus1, FindR(n, w1, sw2)));
 
             free(exp);
             return result;
         }
     }else{
+        //printf("FindR(%d,%d) = 0 (not Bruhat comparable)\n", w1, w2);
         return result;
     }
 }
@@ -286,18 +293,18 @@ Laurent_t FindKLP(int n, int x, int y){
     Laurent_t result = ZeroInitializeLaurent();
     if(x == y){
         result.coeff[28] = 1;
-        printf("x = y in KL\n");
+        //printf("x = y in KL\n");
         return result;
-    }else if(BruhatSmaller(n, x, y) == 0){
-        printf("x not bruhat smaller than y in KL\n");
+    }else if(BruhatSmaller2(n, x, y) == 0){
+        //printf("x not bruhat smaller than y in KL\n");
         return result;
     }else{
-        printf("x bruhat smaller than y in KL\n");
+        //printf("x bruhat smaller than y in KL\n");
         Laurent_t sum = ZeroInitializeLaurent();
-        int* elementsToSumOver = ElementsBetween(n, x, y);
+        int* elementsToSumOver = ElementsBetween2(n, x, y);
         for(int i = 2; i <= elementsToSumOver[0]; i++){
             int a = elementsToSumOver[i];
-            printf("%d\n", a);
+            //printf("%d\n", a);
             sum = SumLaurent(sum, MultiplyLaurent(FindR(n, x, a), FindKLP(n, a, y)));
         }
         /*Laurent_t q_lengthFactor = ZeroInitializeLaurent();
@@ -396,12 +403,13 @@ Laurent_t* MultiplyHecke2(int n, Laurent_t H1[], Laurent_t H2[]){
 #define TEST_MULTHECKE 0
 #define TEST_ALTERNATE 0
 #define TEST_BRUHAT 0
-#define TEST_FINDR 1
+#define TEST_FINDR 0
 #define TEST_CUTOFF 0
 #define TEST_RFROMCHAIN 0
 #define TEST_FINDKLH 0
 #define TEST_ELEMENTSBETWEEN 0
-#define TEST_FINDKLP 0
+#define TEST_ELEMENTSBETWEEN2 0
+#define TEST_FINDKLP 1
 
 int main(){
     
@@ -617,25 +625,25 @@ int main(){
         int x = 0;
         int y = 23;
         Laurent_t R = FindR(n, x, y);
-        DisplayLaurentPoly(R); printf("\n");
+        printf("R polynomial for x = %d and y = %d in S_%d:\n", x, y, n); DisplayLaurentPoly(R); printf("\n");
 
         n = 4;
         x = 11;
         y = 23;
         R = FindR(n, x, y);
-        DisplayLaurentPoly(R); printf("\n");
+        printf("R polynomial for x = %d and y = %d in S_%d:\n", x, y, n); DisplayLaurentPoly(R); printf("\n");
 
         n = 8;
         x = 0;
         y = 40319;
         R = FindR(n, x, y);
-        DisplayLaurentPoly(R); printf("\n");
+        printf("R polynomial for x = %d and y = %d in S_%d:\n", x, y, n); DisplayLaurentPoly(R); printf("\n");
 
         n = 8;
         x = 20000;
         y = 40319;
         R = FindR(n, x, y);
-        DisplayLaurentPoly(R); printf("\n");
+        printf("R polynomial for x = %d and y = %d in S_%d:\n", x, y, n); DisplayLaurentPoly(R); printf("\n");
     }
 
     if(TEST_CUTOFF){
@@ -675,9 +683,9 @@ int main(){
         int *elements = ElementsBetween(3, 0, 5);
         for(int i = 0; i <= elements[0]; i++) printf("%d\n", elements[i]);
 
-        elements = ElementsBetween(3, 0, 1);
+        elements = ElementsBetween(3, 2, 5);
         for(int i = 0; i <= elements[0]; i++) printf("%d\n", elements[i]);
-        elements = ElementsBetween(3, 0, 2);
+        /*elements = ElementsBetween(3, 0, 2);
         for(int i = 0; i <= elements[0]; i++) printf("%d\n", elements[i]);
         elements = ElementsBetween(3, 0, 3);
         for(int i = 0; i <= elements[0]; i++) printf("%d\n", elements[i]);
@@ -690,15 +698,62 @@ int main(){
         elements = ElementsBetween(8, 0, 40319);
         printf("# of elements between: %d\n", elements[0]);
         elements = ElementsBetween(8, 3457, 40319);
-        printf("# of elements between: %d\n", elements[0]);
+        printf("# of elements between: %d\n", elements[0]);*/
+    }
+
+    if(TEST_ELEMENTSBETWEEN2){
+        int *elements = ElementsBetween2(3, 0, 5);
+        for(int i = 0; i <= elements[0]; i++) printf("%d\n", elements[i]);
+
+        elements = ElementsBetween2(3, 2, 5);
+        for(int i = 0; i <= elements[0]; i++) printf("%d\n", elements[i]);
     }
 
     if(TEST_FINDKLP){
-        Laurent_t poly = FindKLP(3, 0, 1);
-        DisplayLaurentPoly(poly); printf("\n");
+        // Verify P(17,23) and the full sum
+        printf("=== Verify P(17,23) ===\n");
+        printf("d = l(23) - l(17) = %d\n", IndexToLength(4,23) - IndexToLength(4,17));
+        printf("cutoff = (d-1)/2 = %d\n", (1-1)/2);
+        printf("Interval [17,23] elements: ");
+        for(int z = 17; z <= 23; z++){
+            if(BruhatSmaller(4, 17, z) && BruhatSmaller(4, z, 23)){
+                printf("%d ", z);
+            }
+        }
+        printf("\n");
+        
+        printf("R(17,23) = "); DisplayLaurentPoly(FindR(4, 17, 23)); printf("\n");
+        printf("P(17,23) = "); DisplayLaurentPoly(FindKLP(4, 17, 23)); printf("\n");
+        
+        printf("\n=== The fundamental issue ===\n");
+        printf("For P(11,23), the formula is:\n");
+        printf("  sum_{11 < z <= 23} R(11,z) * P(z,23) = q^2 * P_bar(11,23) - P(11,23)\n");
+        printf("where P_bar(q) = P(1/q).\n\n");
+        
+        printf("If P(11,23) = 1, then P_bar = 1, so RHS = q^2 - 1\n");
+        printf("The sum is over z in {17, 23}:\n");
+        printf("  R(11,17)*P(17,23) + R(11,23)*P(23,23)\n");
+        printf("  = R(11,17)*1 + R(11,23)*1  [if P(17,23)=1]\n");
+        printf("  = "); DisplayLaurentPoly(FindR(4,11,17)); printf(" + "); 
+        DisplayLaurentPoly(FindR(4,11,23)); printf("\n");
+        printf("  = "); DisplayLaurentPoly(SumLaurent(FindR(4,11,17), FindR(4,11,23))); printf("\n");
+        printf("Expected: q^2 - 1 = -1 + q^2\n");
+        printf("Actual:   -q + q^2\n");
+        printf("Difference: q - 1 = R(11,17)\n");
+        
+        printf("\n=== Hypothesis ===\n");
+        printf("Either P(11,23) != 1, or the R-polynomial formula has a bug.\n");
+        printf("Let's check if maybe R(11,17) should NOT contribute.\n");
+        printf("Is the sum supposed to be sum_{x < z < y} (excluding y)?\n");
+        printf("Sum over {17} only: "); DisplayLaurentPoly(FindR(4,11,17)); printf("\n");
+        printf("That's also not -1 + q^2.\n");
 
-        poly = FindKLP(3, 0, 5);
-        DisplayLaurentPoly(poly); printf("\n");
+        printf("Human debugging below:\n");
+        DisplayLaurentPoly(FindKLP(4, 11, 23)); printf("\n");
+        DisplayLaurentPoly(FindKLP(4, 7, 21)); printf("\n");
+        DisplayLaurentPoly(FindKLP(5, 14, 94)); printf("\n");
+        DisplayLaurentPoly(FindKLP(5, 25, 105)); printf("\n");
+        DisplayLaurentPoly(FindKLP(6, 0, 719)); printf("\n");
     }
 
     /*RFilePointer = fopen("RPolyFile", "wb");
