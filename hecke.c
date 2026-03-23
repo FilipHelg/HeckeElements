@@ -710,50 +710,15 @@ int main(){
     }
 
     if(TEST_FINDKLP){
-        // Verify P(17,23) and the full sum
-        printf("=== Verify P(17,23) ===\n");
-        printf("d = l(23) - l(17) = %d\n", IndexToLength(4,23) - IndexToLength(4,17));
-        printf("cutoff = (d-1)/2 = %d\n", (1-1)/2);
-        printf("Interval [17,23] elements: ");
-        for(int z = 17; z <= 23; z++){
-            if(BruhatSmaller(4, 17, z) && BruhatSmaller(4, z, 23)){
-                printf("%d ", z);
-            }
-        }
-        printf("\n");
-        
-        printf("R(17,23) = "); DisplayLaurentPoly(FindR(4, 17, 23)); printf("\n");
-        printf("P(17,23) = "); DisplayLaurentPoly(FindKLP(4, 17, 23)); printf("\n");
-        
-        printf("\n=== The fundamental issue ===\n");
-        printf("For P(11,23), the formula is:\n");
-        printf("  sum_{11 < z <= 23} R(11,z) * P(z,23) = q^2 * P_bar(11,23) - P(11,23)\n");
-        printf("where P_bar(q) = P(1/q).\n\n");
-        
-        printf("If P(11,23) = 1, then P_bar = 1, so RHS = q^2 - 1\n");
-        printf("The sum is over z in {17, 23}:\n");
-        printf("  R(11,17)*P(17,23) + R(11,23)*P(23,23)\n");
-        printf("  = R(11,17)*1 + R(11,23)*1  [if P(17,23)=1]\n");
-        printf("  = "); DisplayLaurentPoly(FindR(4,11,17)); printf(" + "); 
-        DisplayLaurentPoly(FindR(4,11,23)); printf("\n");
-        printf("  = "); DisplayLaurentPoly(SumLaurent(FindR(4,11,17), FindR(4,11,23))); printf("\n");
-        printf("Expected: q^2 - 1 = -1 + q^2\n");
-        printf("Actual:   -q + q^2\n");
-        printf("Difference: q - 1 = R(11,17)\n");
-        
-        printf("\n=== Hypothesis ===\n");
-        printf("Either P(11,23) != 1, or the R-polynomial formula has a bug.\n");
-        printf("Let's check if maybe R(11,17) should NOT contribute.\n");
-        printf("Is the sum supposed to be sum_{x < z < y} (excluding y)?\n");
-        printf("Sum over {17} only: "); DisplayLaurentPoly(FindR(4,11,17)); printf("\n");
-        printf("That's also not -1 + q^2.\n");
-
-        printf("Human debugging below:\n");
         DisplayLaurentPoly(FindKLP(4, 11, 23)); printf("\n");
         DisplayLaurentPoly(FindKLP(4, 7, 21)); printf("\n");
         DisplayLaurentPoly(FindKLP(5, 14, 94)); printf("\n");
         DisplayLaurentPoly(FindKLP(5, 25, 105)); printf("\n");
-        DisplayLaurentPoly(FindKLP(6, 0, 719)); printf("\n");
+        //DisplayLaurentPoly(FindKLP(6, 0, 719)); printf("\n");
+
+        // I warringtons material finner vi:
+        // 51734062 73516240 1 
+        // varför skulle detta ens listas? Är den inte bara triviell?
     }
 
     /*RFilePointer = fopen("RPolyFile", "wb");
