@@ -720,7 +720,7 @@ int main(){
         // 51734062 73516240 1 
         // varför skulle detta ens listas? Är den inte bara triviell?
 
-        //DisplayLaurentPoly(FindKLP(8, 3020, 14440)); printf("\n");
+        DisplayLaurentPoly(FindKLP(8, 3020, 14440)); printf("\n");
     }
 
     /*RFilePointer = fopen("RPolyFile", "wb");
