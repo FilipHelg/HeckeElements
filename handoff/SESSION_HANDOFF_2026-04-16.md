@@ -43,3 +43,41 @@ Choose one path before final publication of tables:
 1. Keep current generator output convention and update validator semantics accordingly.
 2. Normalize generator output to standard structure-constant labeling (recommended for downstream use and publication).
 3. Support both conventions with an explicit switch and document both output schemas.
+
+## Performance session update (same date)
+
+### What was added
+- Added optional benchmark mode in `kl_structure_bulk_opt.c` via `--bench`.
+- Benchmark mode now reports wall time, CPU time, and per-phase timing for:
+  - build Cx/Cy
+  - multiply
+  - decompose
+  - write TXT
+  - write CSV
+- Added 1 MiB buffered output for TXT/CSV streams using `setvbuf`.
+
+### Multiply-path optimizations implemented
+- Kept specialized lower-term multiply path (`v^-1 - v`) in the simple-generator correction path.
+- Reworked sparse product accumulation to use a dense stamped accumulator (reduces repeated sparse map churn).
+- Added bounded left-multiply cache for reused `(rightId, leftIndex)` expansions.
+- Wired these into `MultiplyHeckeSparse` and main compute loop allocation/free lifecycle.
+
+### Results observed
+- `--bench` runs on S5 show multiply as the dominant phase by far.
+- Representative non-PGO result after serial optimizations:
+  - wall: about 3.16 s (NUL output benchmark style run)
+  - multiply phase: about 2.66 s
+- Experimental PGO run (temporary) improved further to about 2.44 s wall, but training cost was significant.
+
+### Final build workflow decision
+- PGO targets were tested and then removed from `makefile` for a minimal workflow appropriate for one-off large runs.
+- Current recommended path is the normal optimized build (`-Ofast -march=native`) with optional `--bench` for diagnostics.
+
+### Current integrity checkpoint
+- Optimization markers confirmed present in `kl_structure_bulk_opt.c`:
+  - `DenseAccum`
+  - `LeftMulCache`
+  - `PolyMultiplyLowerTerm`
+  - `MultiplyHeckeSparse` integration
+  - `--bench` CLI support
+- No PGO-related targets/flags remain in `makefile`.
