@@ -27,6 +27,24 @@ typedef struct {
 } SparseHecke;
 
 typedef struct {
+    int count;
+    Poly57 *coeff;
+    int *support;
+    unsigned int *stamp;
+    int supportSize;
+    unsigned int epoch;
+} DenseAccum;
+
+typedef struct {
+    int slotCount;
+    int *leftIndex;
+    int *rightId;
+    unsigned int *age;
+    SparseHecke *value;
+    unsigned int tick;
+} LeftMulCache;
+
+typedef struct {
     int n;
     int count;
     int maxLength;
@@ -54,6 +72,110 @@ typedef struct {
 } FastContext;
 
 static int *g_sortLengths = NULL;
+
+static void LeftMultiplyByIndex(
+    const FastContext *ctx,
+    int index,
+    const SparseHecke *base,
+    SparseHecke *result,
+    SparseHecke *scratch
+);
+
+static void SparseAssign(SparseHecke *dst, const SparseHecke *src);
+
+typedef struct {
+    double buildXWall;
+    double buildYWall;
+    double multiplyWall;
+    double decomposeWall;
+    double writeTxtWall;
+    double writeCsvWall;
+
+    double buildXCpu;
+    double buildYCpu;
+    double multiplyCpu;
+    double decomposeCpu;
+    double writeTxtCpu;
+    double writeCsvCpu;
+} BenchStats;
+
+static double WallNowSeconds(void) {
+    struct timespec ts;
+    timespec_get(&ts, TIME_UTC);
+    return (double)ts.tv_sec + (double)ts.tv_nsec * 1e-9;
+}
+
+static double CpuNowSeconds(void) {
+    return (double)clock() / (double)CLOCKS_PER_SEC;
+}
+
+static void PrintBenchReport(
+    const FastContext *ctx,
+    const BenchStats *stats,
+    double loopWall,
+    double loopCpu,
+    int64_t donePairs
+) {
+    if (donePairs <= 0) {
+        return;
+    }
+
+    double pairCount = (double)donePairs;
+    double sumPhaseWall =
+        stats->buildXWall + stats->buildYWall + stats->multiplyWall +
+        stats->decomposeWall + stats->writeTxtWall + stats->writeCsvWall;
+    double sumPhaseCpu =
+        stats->buildXCpu + stats->buildYCpu + stats->multiplyCpu +
+        stats->decomposeCpu + stats->writeTxtCpu + stats->writeCsvCpu;
+
+    fprintf(stderr, "\n==== Benchmark report (S%d, %lld pairs) ====\n", ctx->n, (long long)donePairs);
+    fprintf(stderr, "Total loop wall time: %.3fs\n", loopWall);
+    fprintf(stderr, "Total loop CPU  time: %.3fs\n", loopCpu);
+
+    if (loopWall > 0.0) {
+        fprintf(stderr, "Estimated avg active cores: %.2f\n", loopCpu / loopWall);
+    }
+
+    fprintf(stderr, "\nPhase breakdown (wall):\n");
+    fprintf(stderr, "  Build Cx     : %8.3fs (%.2f%%), %.3fus/pair\n",
+        stats->buildXWall,
+        (loopWall > 0.0) ? 100.0 * stats->buildXWall / loopWall : 0.0,
+        1e6 * stats->buildXWall / pairCount);
+    fprintf(stderr, "  Build Cy     : %8.3fs (%.2f%%), %.3fus/pair\n",
+        stats->buildYWall,
+        (loopWall > 0.0) ? 100.0 * stats->buildYWall / loopWall : 0.0,
+        1e6 * stats->buildYWall / pairCount);
+    fprintf(stderr, "  Multiply     : %8.3fs (%.2f%%), %.3fus/pair\n",
+        stats->multiplyWall,
+        (loopWall > 0.0) ? 100.0 * stats->multiplyWall / loopWall : 0.0,
+        1e6 * stats->multiplyWall / pairCount);
+    fprintf(stderr, "  Decompose    : %8.3fs (%.2f%%), %.3fus/pair\n",
+        stats->decomposeWall,
+        (loopWall > 0.0) ? 100.0 * stats->decomposeWall / loopWall : 0.0,
+        1e6 * stats->decomposeWall / pairCount);
+    fprintf(stderr, "  Write TXT    : %8.3fs (%.2f%%), %.3fus/pair\n",
+        stats->writeTxtWall,
+        (loopWall > 0.0) ? 100.0 * stats->writeTxtWall / loopWall : 0.0,
+        1e6 * stats->writeTxtWall / pairCount);
+    fprintf(stderr, "  Write CSV    : %8.3fs (%.2f%%), %.3fus/pair\n",
+        stats->writeCsvWall,
+        (loopWall > 0.0) ? 100.0 * stats->writeCsvWall / loopWall : 0.0,
+        1e6 * stats->writeCsvWall / pairCount);
+
+    fprintf(stderr, "\nPhase breakdown (CPU):\n");
+    fprintf(stderr, "  Build Cx     : %8.3fs\n", stats->buildXCpu);
+    fprintf(stderr, "  Build Cy     : %8.3fs\n", stats->buildYCpu);
+    fprintf(stderr, "  Multiply     : %8.3fs\n", stats->multiplyCpu);
+    fprintf(stderr, "  Decompose    : %8.3fs\n", stats->decomposeCpu);
+    fprintf(stderr, "  Write TXT    : %8.3fs\n", stats->writeTxtCpu);
+    fprintf(stderr, "  Write CSV    : %8.3fs\n", stats->writeCsvCpu);
+
+    if (sumPhaseWall > 0.0) {
+        fprintf(stderr, "\nInstrumented phase coverage: wall %.2f%%, CPU %.2f%%\n",
+            100.0 * sumPhaseWall / loopWall,
+            (loopCpu > 0.0) ? 100.0 * sumPhaseCpu / loopCpu : 0.0);
+    }
+}
 
 static inline void PolyZero(Poly57 *p) {
     for (int i = 0; i < 57; i++) {
@@ -147,6 +269,59 @@ static void PolyAddInplace(Poly57 *dst, const Poly57 *src) {
     dst->minPos = newMin;
     dst->maxPos = newMax;
     PolyNormalize(dst);
+}
+
+/* Specialized for multiplication by (v^-1 - v), i.e. shift right minus shift left in coeff-array coordinates. */
+static void PolyMultiplyLowerTerm(const Poly57 *src, Poly57 *out) {
+    PolyZero(out);
+    if (PolyIsZero(src)) {
+        return;
+    }
+
+    int seen = 0;
+    int minPos = 57;
+    int maxPos = -1;
+
+    for (int i = src->minPos; i <= src->maxPos; i++) {
+        int c = src->coeff[i];
+        if (c == 0) {
+            continue;
+        }
+
+        int pDown = i - 1;
+        if (pDown >= 0) {
+            out->coeff[pDown] += c;
+            if (!seen) {
+                minPos = pDown;
+                maxPos = pDown;
+                seen = 1;
+            } else {
+                if (pDown < minPos) minPos = pDown;
+                if (pDown > maxPos) maxPos = pDown;
+            }
+        }
+
+        int pUp = i + 1;
+        if (pUp < 57) {
+            out->coeff[pUp] -= c;
+            if (!seen) {
+                minPos = pUp;
+                maxPos = pUp;
+                seen = 1;
+            } else {
+                if (pUp < minPos) minPos = pUp;
+                if (pUp > maxPos) maxPos = pUp;
+            }
+        }
+    }
+
+    if (!seen) {
+        return;
+    }
+
+    out->minPos = minPos;
+    out->maxPos = maxPos;
+    PolyNormalize(out);
 }
 
 static void PolyMultiply(const Poly57 *a, const Poly57 *b, Poly57 *out) {
@@ -294,6 +469,196 @@ static void SparseAddPoly(SparseHecke *h, int idx, const Poly57 *p) {
     if (PolyIsZero(&h->coeff[idx])) {
         SparseRemoveIndex(h, idx);
     }
+}
+
+static int DenseAccumInit(DenseAccum *a, int count) {
+    a->count = count;
+    a->coeff = (Poly57 *)calloc((size_t)count, sizeof(Poly57));
+    a->support = (int *)calloc((size_t)count, sizeof(int));
+    a->stamp = (unsigned int *)calloc((size_t)count, sizeof(unsigned int));
+    a->supportSize = 0;
+    a->epoch = 1;
+
+    if (!a->coeff || !a->support || !a->stamp) {
+        free(a->coeff);
+        free(a->support);
+        free(a->stamp);
+        a->coeff = NULL;
+        a->support = NULL;
+        a->stamp = NULL;
+        return 0;
+    }
+
+    return 1;
+}
+
+static void DenseAccumFree(DenseAccum *a) {
+    free(a->coeff);
+    free(a->support);
+    free(a->stamp);
+    a->coeff = NULL;
+    a->support = NULL;
+    a->stamp = NULL;
+    a->supportSize = 0;
+    a->epoch = 1;
+}
+
+static void DenseAccumBegin(DenseAccum *a) {
+    a->supportSize = 0;
+    a->epoch++;
+    if (a->epoch == 0) {
+        memset(a->stamp, 0, (size_t)a->count * sizeof(unsigned int));
+        a->epoch = 1;
+    }
+}
+
+static void DenseAccumAdd(DenseAccum *a, int idx, const Poly57 *p) {
+    if (PolyIsZero(p)) {
+        return;
+    }
+
+    if (a->stamp[idx] != a->epoch) {
+        a->stamp[idx] = a->epoch;
+        a->support[a->supportSize++] = idx;
+        a->coeff[idx] = *p;
+        return;
+    }
+
+    PolyAddInplace(&a->coeff[idx], p);
+}
+
+static void DenseAccumCommitToSparse(DenseAccum *a, SparseHecke *out) {
+    SparseClear(out);
+
+    for (int k = 0; k < a->supportSize; k++) {
+        int idx = a->support[k];
+        Poly57 *p = &a->coeff[idx];
+        if (PolyIsZero(p)) {
+            continue;
+        }
+
+        int pos = out->supportSize;
+        out->support[pos] = idx;
+        out->posMap[idx] = pos;
+        out->supportSize++;
+        out->coeff[idx] = *p;
+    }
+}
+
+static int LeftMulCacheInit(LeftMulCache *cache, int count) {
+    const size_t budgetBytes = (size_t)96 * (size_t)1024 * (size_t)1024;
+    size_t bytesPerSlot = (size_t)count * (sizeof(Poly57) + sizeof(int) + sizeof(int));
+    if (bytesPerSlot == 0) {
+        cache->slotCount = 0;
+        return 1;
+    }
+
+    int slotCount = (int)(budgetBytes / bytesPerSlot);
+    if (slotCount < 1) {
+        cache->slotCount = 0;
+        return 1;
+    }
+    if (slotCount > 64) {
+        slotCount = 64;
+    }
+
+    cache->slotCount = slotCount;
+    cache->leftIndex = (int *)calloc((size_t)slotCount, sizeof(int));
+    cache->rightId = (int *)calloc((size_t)slotCount, sizeof(int));
+    cache->age = (unsigned int *)calloc((size_t)slotCount, sizeof(unsigned int));
+    cache->value = (SparseHecke *)calloc((size_t)slotCount, sizeof(SparseHecke));
+    cache->tick = 1;
+
+    if (!cache->leftIndex || !cache->rightId || !cache->age || !cache->value) {
+        free(cache->leftIndex);
+        free(cache->rightId);
+        free(cache->age);
+        free(cache->value);
+        memset(cache, 0, sizeof(*cache));
+        return 0;
+    }
+
+    for (int s = 0; s < slotCount; s++) {
+        cache->leftIndex[s] = -1;
+        cache->rightId[s] = -1;
+        if (!SparseInit(&cache->value[s], count)) {
+            for (int j = 0; j < s; j++) {
+                SparseFree(&cache->value[j]);
+            }
+            free(cache->leftIndex);
+            free(cache->rightId);
+            free(cache->age);
+            free(cache->value);
+            memset(cache, 0, sizeof(*cache));
+            return 0;
+        }
+    }
+
+    return 1;
+}
+
+static void LeftMulCacheFree(LeftMulCache *cache) {
+    for (int s = 0; s < cache->slotCount; s++) {
+        SparseFree(&cache->value[s]);
+    }
+    free(cache->leftIndex);
+    free(cache->rightId);
+    free(cache->age);
+    free(cache->value);
+    memset(cache, 0, sizeof(*cache));
+}
+
+static const SparseHecke *LeftMulGetCached(
+    const FastContext *ctx,
+    int rightId,
+    int leftIndex,
+    const SparseHecke *right,
+    SparseHecke *tmp1,
+    SparseHecke *tmp2,
+    LeftMulCache *cache
+) {
+    if (cache->slotCount <= 0) {
+        LeftMultiplyByIndex(ctx, leftIndex, right, tmp1, tmp2);
+        return tmp1;
+    }
+
+    int hit = -1;
+    for (int s = 0; s < cache->slotCount; s++) {
+        if (cache->leftIndex[s] == leftIndex && cache->rightId[s] == rightId) {
+            hit = s;
+            break;
+        }
+    }
+
+    cache->tick++;
+    if (cache->tick == 0) {
+        cache->tick = 1;
+    }
+
+    if (hit >= 0) {
+        cache->age[hit] = cache->tick;
+        return &cache->value[hit];
+    }
+
+    int victim = -1;
+    unsigned int oldest = 0u;
+    for (int s = 0; s < cache->slotCount; s++) {
+        if (cache->rightId[s] < 0) {
+            victim = s;
+            break;
+        }
+        if (victim < 0 || cache->age[s] < oldest) {
+            victim = s;
+            oldest = cache->age[s];
+        }
+    }
+
+    LeftMultiplyByIndex(ctx, leftIndex, right, tmp1, tmp2);
+    SparseAssign(&cache->value[victim], tmp1);
+    cache->leftIndex[victim] = leftIndex;
+    cache->rightId[victim] = rightId;
+    cache->age[victim] = cache->tick;
+    return &cache->value[victim];
 }
 
 static void SparseAssign(SparseHecke *dst, const SparseHecke *src) {
@@ -643,7 +1008,7 @@ static void MultiplySimpleGenerator(
 
         if (!inc[idx]) {
             Poly57 corr;
-            PolyMultiply(&ctx->lowerTerm, poly, &corr);
+            PolyMultiplyLowerTerm(poly, &corr);
             SparseAddPoly(out, idx, &corr);
         }
     }
@@ -678,27 +1043,40 @@ static void LeftMultiplyByIndex(
 
 static void MultiplyHeckeSparse(
     const FastContext *ctx,
+    int rightId,
     const SparseHecke *left,
     const SparseHecke *right,
     SparseHecke *product,
     SparseHecke *tmp1,
-    SparseHecke *tmp2
+    SparseHecke *tmp2,
+    DenseAccum *accum,
+    LeftMulCache *leftMulCache
 ) {
-    SparseClear(product);
+    DenseAccumBegin(accum);
 
     for (int lp = 0; lp < left->supportSize; lp++) {
         int i = left->support[lp];
         const Poly57 *scalar = &left->coeff[i];
 
-        LeftMultiplyByIndex(ctx, i, right, tmp1, tmp2);
+        const SparseHecke *lm = LeftMulGetCached(
+            ctx,
+            rightId,
+            i,
+            right,
+            tmp1,
+            tmp2,
+            leftMulCache
+        );
 
-        for (int rp = 0; rp < tmp1->supportSize; rp++) {
-            int j = tmp1->support[rp];
+        for (int rp = 0; rp < lm->supportSize; rp++) {
+            int j = lm->support[rp];
             Poly57 scaled;
-            PolyMultiply(scalar, &tmp1->coeff[j], &scaled);
-            SparseAddPoly(product, j, &scaled);
+            PolyMultiply(scalar, &lm->coeff[j], &scaled);
+            DenseAccumAdd(accum, j, &scaled);
         }
     }
+
+    DenseAccumCommitToSparse(accum, product);
 }
 
 static void ClearCoeffArray(Poly57 *coeffs, int count) {
@@ -854,14 +1232,15 @@ static void FreeContext(FastContext *ctx) {
 
 static void PrintUsage(const char *prog) {
     printf("Usage:\n");
-    printf("  %s n [output_txt] [output_csv]\n", prog);
+    printf("  %s n [output_txt] [output_csv] [--bench]\n", prog);
     printf("\n");
     printf("n must be in {4,5,6,7,8,9}.\n");
     printf("If outputs are omitted, defaults are S<n>_structure_constants_bulk_opt.txt/.csv.\n");
+    printf("Use --bench to print per-phase wall/CPU timings to stderr.\n");
 }
 
 int main(int argc, char *argv[]) {
-    if (argc < 2 || argc > 4) {
+    if (argc < 2 || argc > 5) {
         PrintUsage(argv[0]);
         return 1;
     }
@@ -880,8 +1259,29 @@ int main(int argc, char *argv[]) {
     snprintf(defaultTxt, sizeof(defaultTxt), "S%d_structure_constants_bulk_opt.txt", n);
     snprintf(defaultCsv, sizeof(defaultCsv), "S%d_structure_constants_bulk_opt.csv", n);
 
-    const char *txtPath = (argc >= 3) ? argv[2] : defaultTxt;
-    const char *csvPath = (argc >= 4) ? argv[3] : defaultCsv;
+    const char *txtPath = defaultTxt;
+    const char *csvPath = defaultCsv;
+    int benchEnabled = 0;
+
+    int outputArg = 0;
+    for (int i = 2; i < argc; i++) {
+        if (strcmp(argv[i], "--bench") == 0) {
+            benchEnabled = 1;
+            continue;
+        }
+
+        if (outputArg == 0) {
+            txtPath = argv[i];
+            outputArg = 1;
+        } else if (outputArg == 1) {
+            csvPath = argv[i];
+            outputArg = 2;
+        } else {
+            fprintf(stderr, "Too many positional arguments.\n");
+            PrintUsage(argv[0]);
+            return 1;
+        }
+    }
 
     FastContext ctx;
     memset(&ctx, 0, sizeof(ctx));
@@ -940,6 +1340,10 @@ int main(int argc, char *argv[]) {
         return 1;
     }
 
+    /* Use larger buffers so formatted output causes fewer flushes/syscalls. */
+    setvbuf(txtOut, NULL, _IOFBF, (size_t)1 << 20);
+    setvbuf(csvOut, NULL, _IOFBF, (size_t)1 << 20);
+
     fprintf(txtOut, "# All KL-basis products in S%d (optimized bulk)\n", n);
     fprintf(txtOut, "# Format: C_{x} * C_{y} = sum_z h_{x,y}^z(v) C_{z}\n\n");
     fprintf(csvOut, "\"x\",\"y\",\"z\",\"h\"\n");
@@ -949,6 +1353,43 @@ int main(int argc, char *argv[]) {
         !SparseInit(&tmp1, ctx.count) || !SparseInit(&tmp2, ctx.count) || !SparseInit(&residual, ctx.count) ||
         !SparseInit(&basisTmp, ctx.count)) {
         fprintf(stderr, "Out of memory creating sparse workspaces.\n");
+        SparseFree(&Cx);
+        SparseFree(&Cy);
+        SparseFree(&product);
+        SparseFree(&tmp1);
+        SparseFree(&tmp2);
+        SparseFree(&residual);
+        SparseFree(&basisTmp);
+        fclose(txtOut);
+        fclose(csvOut);
+        free(permTable);
+        FreeContext(&ctx);
+        return 1;
+    }
+
+    DenseAccum accum;
+    memset(&accum, 0, sizeof(accum));
+    if (!DenseAccumInit(&accum, ctx.count)) {
+        fprintf(stderr, "Out of memory for dense accumulation workspace.\n");
+        SparseFree(&Cx);
+        SparseFree(&Cy);
+        SparseFree(&product);
+        SparseFree(&tmp1);
+        SparseFree(&tmp2);
+        SparseFree(&residual);
+        SparseFree(&basisTmp);
+        fclose(txtOut);
+        fclose(csvOut);
+        free(permTable);
+        FreeContext(&ctx);
+        return 1;
+    }
+
+    LeftMulCache leftMulCache;
+    memset(&leftMulCache, 0, sizeof(leftMulCache));
+    if (!LeftMulCacheInit(&leftMulCache, ctx.count)) {
+        fprintf(stderr, "Out of memory for left-multiply cache.\n");
+        DenseAccumFree(&accum);
         SparseFree(&Cx);
         SparseFree(&Cy);
         SparseFree(&product);
@@ -982,9 +1423,18 @@ int main(int argc, char *argv[]) {
 
     int64_t totalPairs = (int64_t)ctx.count * (int64_t)ctx.count;
     int64_t donePairs = 0;
-    clock_t start = clock();
+    double startCpu = CpuNowSeconds();
+    double startWall = WallNowSeconds();
+    BenchStats bench;
+    memset(&bench, 0, sizeof(bench));
 
     for (int x = 0; x < ctx.count; x++) {
+        double t0w = 0.0, t0c = 0.0;
+        if (benchEnabled) {
+            t0w = WallNowSeconds();
+            t0c = CpuNowSeconds();
+        }
+
         if (ctx.useCache) {
             const Poly57 *rowX = ctx.klCache + (size_t)x * (size_t)ctx.count;
             int sx = ctx.klSupportOffsets[x];
@@ -994,7 +1444,17 @@ int main(int argc, char *argv[]) {
             BuildKLElementSparse(&ctx, x, &Cx);
         }
 
+        if (benchEnabled) {
+            bench.buildXWall += WallNowSeconds() - t0w;
+            bench.buildXCpu += CpuNowSeconds() - t0c;
+        }
+
         for (int y = 0; y < ctx.count; y++) {
+            if (benchEnabled) {
+                t0w = WallNowSeconds();
+                t0c = CpuNowSeconds();
+            }
+
             if (ctx.useCache) {
                 const Poly57 *rowY = ctx.klCache + (size_t)y * (size_t)ctx.count;
                 int sy = ctx.klSupportOffsets[y];
@@ -1004,17 +1464,62 @@ int main(int argc, char *argv[]) {
                 BuildKLElementSparse(&ctx, y, &Cy);
             }
 
-            MultiplyHeckeSparse(&ctx, &Cx, &Cy, &product, &tmp1, &tmp2);
+            if (benchEnabled) {
+                bench.buildYWall += WallNowSeconds() - t0w;
+                bench.buildYCpu += CpuNowSeconds() - t0c;
+                t0w = WallNowSeconds();
+                t0c = CpuNowSeconds();
+            }
+
+            MultiplyHeckeSparse(
+                &ctx,
+                y,
+                &Cx,
+                &Cy,
+                &product,
+                &tmp1,
+                &tmp2,
+                &accum,
+                &leftMulCache
+            );
+
+            if (benchEnabled) {
+                bench.multiplyWall += WallNowSeconds() - t0w;
+                bench.multiplyCpu += CpuNowSeconds() - t0c;
+                t0w = WallNowSeconds();
+                t0c = CpuNowSeconds();
+            }
+
             DecomposeToKLBasis(&ctx, &product, coeffs, &residual, &basisTmp);
 
+            if (benchEnabled) {
+                bench.decomposeWall += WallNowSeconds() - t0w;
+                bench.decomposeCpu += CpuNowSeconds() - t0c;
+                t0w = WallNowSeconds();
+                t0c = CpuNowSeconds();
+            }
+
             WriteTextProduct(txtOut, &ctx, x, y, permTable, coeffs);
+
+            if (benchEnabled) {
+                bench.writeTxtWall += WallNowSeconds() - t0w;
+                bench.writeTxtCpu += CpuNowSeconds() - t0c;
+                t0w = WallNowSeconds();
+                t0c = CpuNowSeconds();
+            }
+
             WriteCsvTerms(csvOut, &ctx, x, y, permTable, coeffs);
+
+            if (benchEnabled) {
+                bench.writeCsvWall += WallNowSeconds() - t0w;
+                bench.writeCsvCpu += CpuNowSeconds() - t0c;
+            }
 
             donePairs++;
         }
 
         if ((x + 1) % 5 == 0 || x + 1 == ctx.count) {
-            double elapsed = (double)(clock() - start) / (double)CLOCKS_PER_SEC;
+            double elapsed = WallNowSeconds() - startWall;
             fprintf(stderr, "Progress: %d/%d x-rows, %.2f%% pairs, elapsed %.1fs\n",
                 x + 1,
                 ctx.count,
@@ -1024,10 +1529,17 @@ int main(int argc, char *argv[]) {
         }
     }
 
-    double elapsed = (double)(clock() - start) / (double)CLOCKS_PER_SEC;
-    fprintf(stderr, "Done. Wrote %s and %s in %.1fs\n", txtPath, csvPath, elapsed);
+    double elapsedWall = WallNowSeconds() - startWall;
+    double elapsedCpu = CpuNowSeconds() - startCpu;
+    fprintf(stderr, "Done. Wrote %s and %s in %.1fs wall (%.1fs CPU)\n", txtPath, csvPath, elapsedWall, elapsedCpu);
+
+    if (benchEnabled) {
+        PrintBenchReport(&ctx, &bench, elapsedWall, elapsedCpu, donePairs);
+    }
 
     free(coeffs);
+    LeftMulCacheFree(&leftMulCache);
+    DenseAccumFree(&accum);
     SparseFree(&Cx);
     SparseFree(&Cy);
     SparseFree(&product);
