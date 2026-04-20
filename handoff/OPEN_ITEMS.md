@@ -27,3 +27,18 @@ Before sharing externally:
 - regenerate S4/S5/S6 with final chosen convention
 - re-run validator with strict associativity mode under matching semantics
 - freeze tool versions/flags in a release note
+
+## 5) Calibrate runtime estimator on S6/S7
+Problem:
+- `kl_runtime_sample_estimate` exists and works, but small-row samples can overestimate full runtime.
+
+Suggested actions:
+1. Run repeated estimates for S6 with increasing sample sizes (`K=24,48,96,192`) and compare to known full S6 runtime.
+2. Fit a correction factor or confidence interval for estimator output.
+3. Use calibrated estimator to forecast S7/S8 with explicit uncertainty bands.
+
+## 6) Optional next performance work
+Suggested actions:
+1. Add `--row-schedule auto` to select `block` vs `weighted` based on quick pilot samples.
+2. Profile memory bandwidth/cache behavior in multiply/decompose hot loops for S6+.
+3. Evaluate hybrid partitioning (weighted contiguous chunks + work stealing) for better balance at high thread counts.
