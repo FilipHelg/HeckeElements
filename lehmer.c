@@ -126,7 +126,118 @@ int ReducedExpression(int n, int x, char expression[]){
     return counter;
 }
 
-int BruhatSmaller(int n, int w1, int w2){
+// Computes the partition shape of x via Robinson-Schensted row insertion.
+// Writes row lengths to shape[0..rows-1], zero-fills the rest, and returns rows.
+int RSShape(int n, int x, char shape[]){
+    char perm[8];
+    char tableau[8][8];
+    char rowLen[8] = {0};
+    int rows = 0;
+
+    IndexToPerm(n, x, perm);
+
+    for(int i = 0; i < n; i++){
+        char bumped = perm[i];
+        int r = 0;
+
+        while(1){
+            if(r == rows){
+                tableau[r][0] = bumped;
+                rowLen[r] = 1;
+                rows++;
+                break;
+            }
+
+            int c = 0;
+            while(c < rowLen[r] && tableau[r][c] < bumped) c++;
+
+            if(c == rowLen[r]){
+                tableau[r][c] = bumped;
+                rowLen[r]++;
+                break;
+            }
+
+            char tmp = tableau[r][c];
+            tableau[r][c] = bumped;
+            bumped = tmp;
+            r++;
+        }
+    }
+
+    for(int i = 0; i < n; i++) shape[i] = 0;
+    for(int i = 0; i < rows; i++) shape[i] = rowLen[i];
+    return rows;
+}
+
+// Computes Robinson-Schensted insertion (P) and recording (Q) tableaux.
+// Writes row lengths to shape[0..rows-1], zero-fills outputs, and returns rows.
+int RSTableaux(int n, int x, char P[8][8], char Q[8][8], char shape[]){
+    char perm[8];
+    char rowLen[8] = {0};
+    int rows = 0;
+
+    IndexToPerm(n, x, perm);
+
+    for(int r = 0; r < 8; r++){
+        for(int c = 0; c < 8; c++){
+            P[r][c] = 0;
+            Q[r][c] = 0;
+        }
+    }
+
+    for(int i = 0; i < n; i++){
+        char bumped = perm[i];
+        int r = 0;
+
+        while(1){
+            if(r == rows){
+                P[r][0] = bumped;
+                Q[r][0] = (char)(i);
+                rowLen[r] = 1;
+                rows++;
+                break;
+            }
+
+            int c = 0;
+            while(c < rowLen[r] && P[r][c] < bumped) c++;
+
+            if(c == rowLen[r]){
+                P[r][c] = bumped;
+                Q[r][c] = (char)(i);
+                rowLen[r]++;
+                break;
+            }
+
+            char tmp = P[r][c];
+            P[r][c] = bumped;
+            bumped = tmp;
+            r++;
+        }
+    }
+
+    for(int i = 0; i < n; i++) shape[i] = 0;
+    for(int i = 0; i < rows; i++) shape[i] = rowLen[i];
+    return rows;
+}
+
+void DisplayTableaux(int n, int x){
+    char P[8][8], Q[8][8], shape[8];
+        RSTableaux(n, x, P, Q, shape);
+        printf("P tableaux of x = %d:\n", x);
+        for(int i = 0; i < 8; i++){
+            for(int j = 0; j < 8; j++) if(j != 7 && P[i][j+1] == 0){printf("%d ", P[i][j]); break;} else printf("%d ", P[i][j]);
+            printf("\n");
+            if(i != 7 && P[i +1][0] == 0) break;
+        }
+        printf("Q tableaux of x = %d:\n", x);
+        for(int i = 0; i < 8; i++){
+            for(int j = 0; j < 8; j++) if(j != 7 && Q[i][j+1] == 0){printf("%d ", Q[i][j]); break;} else printf("%d ", Q[i][j]);
+            printf("\n");
+            if(i != 7 && Q[i+1][0] == 0) break;
+        }
+}
+
+/*int BruhatSmaller(int n, int w1, int w2){
     char* exp1 = (char*)calloc(28, sizeof(char));
     char* exp2 = (char*)calloc(28, sizeof(char));
     ReducedExpression(n, w1, exp1);
@@ -167,11 +278,11 @@ int BruhatSmaller(int n, int w1, int w2){
     free(exp2);
     //printf("Base case return!\n");
     return 1;
-}
+}*/
 
-// Correct Bruhat order using rank matrix criterion:
+// Bruhat order using rank matrix criterion:
 // x <= y iff for all i, j: #{k <= i : x[k] >= j} <= #{k <= i : y[k] >= j}
-int BruhatSmaller2(int n, int w1, int w2) {
+int CheckBruhatSmaller(int n, int w1, int w2) {
     char permx[8], permy[8];
     IndexToPerm(n, w1, permx);
     IndexToPerm(n, w2, permy);
@@ -193,13 +304,13 @@ int TrueBruhatSmaller(int n, int w1, int w2){
     if(w1 == w2){
         return 0;
     }else{
-        return BruhatSmaller2(n, w1, w2);
+        return CheckBruhatSmaller(n, w1, w2);
     }
 }
 
 // Returns an array ElementsBetween where ElementsBetween[0] is the number of elements and ElementsBetween[1] and forward are the indices of those elements
 int* ElementsBetween(int n, int x, int y){
-    if(!BruhatSmaller2(n , x, y)){
+    if(!CheckBruhatSmaller(n , x, y)){
         int* result = (int*)calloc(1, sizeof(int));
         return result;
     }
@@ -223,7 +334,7 @@ int* ElementsBetween(int n, int x, int y){
                 int s = FACT_TABLE[n - j];
                 int ws = MultiplyIndex(n, elementList[l], s);
                 if(!seen[ws]){
-                    if(IndexToLength(n, ws) == i && BruhatSmaller2(n, ws, y)){
+                    if(IndexToLength(n, ws) == i && CheckBruhatSmaller(n, ws, y)){
                         elementList[k+1] = ws;
                         seen[ws] = 1;
                         k++;
@@ -243,7 +354,7 @@ int* ElementsBetween2(int n, int x, int y){
     int* result = (int*)calloc(fac(n) + 1, sizeof(int));
     int k = 0;
     for(int i = 0; i < fac(n); i++){
-        if(BruhatSmaller2(n, x, i) && BruhatSmaller2(n, i, y)){
+        if(CheckBruhatSmaller(n, x, i) && CheckBruhatSmaller(n, i, y)){
             k++;
             result[k] = i;
         }

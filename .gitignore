@@ -2,4 +2,5 @@
 *.exe
 *.o
 *.csv
+*.bin
 tmp_kl_parallel_*/
