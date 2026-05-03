@@ -152,7 +152,7 @@ static Laurent_t KLCoefficient(const BulkContext *ctx, int y, int w) {
         return result;
     }
 
-    if (!BruhatSmaller2(ctx->n, y, w)) {
+    if (!CheckBruhatSmaller(ctx->n, y, w)) {
         return result;
     }
 

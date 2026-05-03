@@ -756,7 +756,7 @@ static Poly57 KLCoefficient(const FastContext *ctx, int y, int w) {
         return p;
     }
 
-    if (!BruhatSmaller2(ctx->n, y, w)) {
+    if (!CheckBruhatSmaller(ctx->n, y, w)) {
         return p;
     }
 

@@ -165,7 +165,7 @@ static int LoadKLBasisFromFile(int n, const char *filename, Laurent_t *klBasis, 
             if (y == w) {
                 continue;
             }
-            if (!BruhatSmaller2(n, y, w)) {
+            if (!CheckBruhatSmaller(n, y, w)) {
                 continue;
             }
 
@@ -197,7 +197,7 @@ static int LoadKLBasisFromFile(int n, const char *filename, Laurent_t *klBasis, 
             continue;
         }
 
-        if (!BruhatSmaller2(n, y, w)) {
+        if (!CheckBruhatSmaller(n, y, w)) {
             fprintf(stderr, "Skipping non-Bruhat pair in data: ");
             PrintPermutation(n, y);
             printf(" ");

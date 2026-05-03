@@ -58,6 +58,7 @@ typedef struct {
     unsigned int tick;
 } LeftMulCache;
 
+
 typedef struct {
     int n;
     int count;
@@ -925,7 +926,7 @@ static void DenseAccumCommitToSparse(DenseAccum *a, SparseHecke *out) {
 
 /* Initialize cache storage for repeated left-multiplications. */
 static int LeftMulCacheInit(LeftMulCache *cache, int count) {
-    const size_t budgetBytes = (size_t)96 * (size_t)1024 * (size_t)1024;
+    const size_t budgetBytes = (size_t)256 * (size_t)1024 * (size_t)1024;
     size_t bytesPerSlot = (size_t)count * (sizeof(Poly57) + sizeof(int) + sizeof(int));
     if (bytesPerSlot == 0) {
         cache->slotCount = 0;
@@ -937,9 +938,12 @@ static int LeftMulCacheInit(LeftMulCache *cache, int count) {
         cache->slotCount = 0;
         return 1;
     }
-    if (slotCount > 64) {
-        slotCount = 64;
-    }
+    /* Make cache 4-way set-associative for lower thrashing. */
+    const int ways = 4;
+    if (slotCount > 1000) slotCount = 1000;
+    /* Ensure slotCount is at least ways and multiple of ways */
+    if (slotCount < ways) slotCount = ways;
+    slotCount = (slotCount / ways) * ways;
 
     cache->slotCount = slotCount;
     cache->leftIndex = (int *)calloc((size_t)slotCount, sizeof(int));
@@ -1011,14 +1015,24 @@ static const SparseHecke *LeftMulGetCached(
         return tmp1;
     }
 
+    /* Set-associative lookup: fixed small associativity reduces thrashing. */
+    const int ways = 4;
+    int setCount = cache->slotCount / ways;
+    if (setCount <= 0) {
+        /* fallback */
+        if (cacheMissOut) *cacheMissOut = 1;
+        LeftMultiplyByIndex(ctx, leftIndex, right, tmp1, tmp2);
+        return tmp1;
+    }
+
     unsigned int mix = (unsigned int)rightId * 2654435761u;
     mix ^= (unsigned int)leftIndex * 2246822519u;
-    int base = (int)(mix % (unsigned int)cache->slotCount);
-    int probeCount = cache->slotCount < 8 ? cache->slotCount : 8;
+    int set = (int)(mix % (unsigned int)setCount);
+    int baseIndex = set * ways;
 
     int hit = -1;
-    for (int p = 0; p < probeCount; p++) {
-        int s = (base + p) % cache->slotCount;
+    for (int p = 0; p < ways; p++) {
+        int s = baseIndex + p;
         if (cache->leftIndex[s] == leftIndex && cache->rightId[s] == rightId) {
             hit = s;
             break;
@@ -1026,9 +1040,7 @@ static const SparseHecke *LeftMulGetCached(
     }
 
     cache->tick++;
-    if (cache->tick == 0) {
-        cache->tick = 1;
-    }
+    if (cache->tick == 0) cache->tick = 1;
 
     if (hit >= 0) {
         cache->age[hit] = cache->tick;
@@ -1037,8 +1049,8 @@ static const SparseHecke *LeftMulGetCached(
 
     int victim = -1;
     unsigned int oldest = 0u;
-    for (int p = 0; p < probeCount; p++) {
-        int s = (base + p) % cache->slotCount;
+    for (int p = 0; p < ways; p++) {
+        int s = baseIndex + p;
         if (cache->rightId[s] < 0) {
             victim = s;
             break;
@@ -1144,17 +1156,7 @@ static Poly57 KLCoefficient(const FastContext *ctx, int y, int w) {
         return p;
     }
 
-    if (!BruhatSmaller2(ctx->n, y, w)) {
-        return p;
-    }
-
-    /* In type A2, the only nontrivial KL polynomial is P_{e,w0} = 1 + q,
-       which is v^3 + v in this v-normalization. */
-    if (ctx->n == 3 && y == 0 && w == ctx->count - 1) {
-        PolyFromMonomial(&p, 3, 1);
-        p.coeff[29] += 1;
-        p.minPos = 29;
-        p.maxPos = 31;
+    if (!CheckBruhatSmaller(ctx->n, y, w)) {
         return p;
     }
 
@@ -1468,7 +1470,7 @@ static void LeftMultiplyByIndex(
     SparseHecke *a = result;
     SparseHecke *b = scratch;
 
-    for (int step = 0; step < len; step++) {
+    for (int step = len - 1; step >= 0; step--) {
         int g = (int)ctx->exprG[(size_t)index * (size_t)ctx->maxLength + (size_t)step];
         MultiplySimpleGenerator(ctx, g, a, b);
 

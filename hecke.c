@@ -134,7 +134,7 @@ Laurent_t FindR(int n, int w1, int w2){
         result.coeff[28] = 1; //constant 1
         //printf("FindR(%d,%d) = 1 (base case)\n", w1, w2);
         return result;
-    }else if(BruhatSmaller2(n, w1, w2)){
+    }else if(CheckBruhatSmaller(n, w1, w2)){
         char* exp = (char*)calloc(28, sizeof(char));
         int len = ReducedExpression(n, w2, exp);
         int s = 0;
@@ -189,7 +189,7 @@ Laurent_t FindKLh(int n, int x, int y){
         printf("Returned due to x = y! x = %d y = %d\n", x, y);
         printf("Result: "); DisplayLaurentPoly(result); printf("\n");
         return result;
-    }else if(BruhatSmaller(n, y, x) == 0){
+    }else if(CheckBruhatSmaller(n, y, x) == 0){
         printf("Returned due to not bruhat smaller! x = %d y = %d\n", x, y);
         printf("Result: "); DisplayLaurentPoly(result); printf("\n");
         return result;
@@ -278,7 +278,7 @@ Laurent_t FindKLh(int n, int x, int y){
 
 int mu(int n, int x, int y){
     Laurent_t poly;
-    if(BruhatSmaller(n, y, x)){
+    if(CheckBruhatSmaller(n, y, x)){
         poly = FindKLh(n, x, y);
     } 
     else {
@@ -295,7 +295,7 @@ Laurent_t FindKLP(int n, int x, int y){
         result.coeff[28] = 1;
         //printf("x = y in KL\n");
         return result;
-    }else if(BruhatSmaller2(n, x, y) == 0){
+    }else if(CheckBruhatSmaller(n, x, y) == 0){
         //printf("x not bruhat smaller than y in KL\n");
         return result;
     }else{
@@ -409,7 +409,9 @@ Laurent_t* MultiplyHecke2(int n, Laurent_t H1[], Laurent_t H2[]){
 #define TEST_FINDKLH 0
 #define TEST_ELEMENTSBETWEEN 0
 #define TEST_ELEMENTSBETWEEN2 0
-#define TEST_FINDKLP 1
+#define TEST_FINDKLP 0
+#define TEST_RSSHAPE 0
+#define TEST_RSTABLEAUX 1
 
 int main(){
     
@@ -609,15 +611,15 @@ int main(){
     }
 
     if(TEST_BRUHAT){
-        printf("%d\n", BruhatSmaller(4, 0, 1));
-        printf("%d\n", BruhatSmaller(4, 2, 1));
-        printf("%d\n", BruhatSmaller(4, 1, 3));
-        printf("%d\n", BruhatSmaller(4, 4, 5));
-        printf("%d\n", BruhatSmaller(4, 9, 17));
-        printf("%d\n", BruhatSmaller(4, 9, 19));
-        printf("%d\n", BruhatSmaller(4, 11, 23));
-        printf("%d\n", BruhatSmaller(8, 40318, 40319));
-        printf("%d\n", BruhatSmaller(8, 40319, 40319));
+        printf("%d\n", CheckBruhatSmaller(4, 0, 1));
+        printf("%d\n", CheckBruhatSmaller(4, 2, 1));
+        printf("%d\n", CheckBruhatSmaller(4, 1, 3));
+        printf("%d\n", CheckBruhatSmaller(4, 4, 5));
+        printf("%d\n", CheckBruhatSmaller(4, 9, 17));
+        printf("%d\n", CheckBruhatSmaller(4, 9, 19));
+        printf("%d\n", CheckBruhatSmaller(4, 11, 23));
+        printf("%d\n", CheckBruhatSmaller(8, 40318, 40319));
+        printf("%d\n", CheckBruhatSmaller(8, 40319, 40319));
     }
 
     if(TEST_FINDR){
@@ -721,6 +723,57 @@ int main(){
         // varför skulle detta ens listas? Är den inte bara triviell?
 
         DisplayLaurentPoly(FindKLP(8, 3020, 14440)); printf("\n");
+    }
+
+    if(TEST_RSSHAPE){
+        char shape1[8], shape2[8];
+        RSShape(5, 15, shape1);
+        for (int i; i < 8; i++) printf("%d\n", shape1[i]);
+
+        int n = 8;
+        char bitmap[fac(n)];
+
+        for(int i = 0; i < fac(n); i++) bitmap[i] = 0;
+
+        for(int i = 0; i < fac(n); i++){
+            if(bitmap[i]) continue;
+            RSShape(n, i, shape1);
+            for(int j = i+1; j < fac(n); j++){
+                if(bitmap[j]) continue;
+                RSShape(n, j, shape2);
+                int equal = 1;
+                for(int k = 0; k < n; k++){
+                    if(shape1[k]!=shape2[k]) {equal = 0; break;}
+                }
+                if(equal){printf("sh(%d) = sh(%d)!\n", i, j); bitmap[j] = 1;}
+            }
+        }
+    }
+
+    if(TEST_RSTABLEAUX){
+        int n = 8, pCount = 0, qCount = 0;
+        char P1[8][8], Q1[8][8], shape1[8], P2[8][8], Q2[8][8], shape2[8];
+
+        //char Pbitmap[fac(n)][fac(n)], Qbitmap[fac(n)][fac(n)];
+        //for(int i = 0; i < fac(n); i++) for(int j = 0; j < fac(n); j++) {Pbitmap[i][j] = 0; Qbitmap[i][j] = 0;}
+
+        for(int i = 0; i < fac(n); i++){
+            //if (Pbitmap[i] || Qbitmap[i]) continue;
+            RSTableaux(n, i, P1, Q1, shape1);
+            for(int j = i + 1; j < fac(n); j++){
+                //if (Pbitmap[j][i] || Qbitmap[j][i]) continue;
+                RSTableaux(n, j, P2, Q2, shape2);
+                int qEqual = 1, pEqual = 1;
+                for(int k = 0; k < n*n; k++){
+                    if(pEqual && P1[k/n][k%n] != P2[k/n][k%n]) pEqual = 0;
+                    if(qEqual && Q1[k/n][k%n] != Q2[k/n][k%n]) qEqual = 0;
+                }
+                if(pEqual) {pCount++; /*Pbitmap[i][j] = 1;*/}
+                if(qEqual) {qCount++; /*Qbitmap[i][j] = 1;*/}
+            }
+            if(i%100 == 0) printf("%d\n", i);
+        }
+        printf("P-count = %d, Q-count = %d\n", pCount, qCount);
     }
 
     /*RFilePointer = fopen("RPolyFile", "wb");

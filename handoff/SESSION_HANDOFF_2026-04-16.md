@@ -114,6 +114,22 @@ Choose one path before final publication of tables:
 - Early check indicates small sample sizes can overestimate S6 runtime; calibration is pending.
 
 ### Recommended immediate next steps
+## Update (2026-04-28)
+
+### New dual KL utilities
+- Added a proof-of-concept single-element solver: `dual_kl_poc.c` (CLI `./dual_kl_poc N X`).
+- Added a bulk generator for dual KL basis elements of involutions: `dual_kl_bulk.c` (writes `dual_kl_bulk_n<N>.bin`).
+- Added a simple binary reader/inspector: `dual_kl_reader.c` (CLI `./dual_kl_reader <file> [--x INDEX]`).
+
+Notes on behavior and usage:
+- `dual_kl_bulk` currently emits entries only for involutions (permutations equal to their inverse). This is intentional to keep storage small for large `N`.
+- The bulk worker prints progress messages during computation: a progress line is emitted every 5 completed involutions.
+- The binary cache is a compact sparse representation; use `dual_kl_reader` to decode and verify records.
+
+Suggested next follow-ups (recorded in OPEN_ITEMS):
+- Make progress interval configurable with a `--progress-interval` CLI flag.
+- Add an index file for random access into `dual_kl_bulk_n<N>.bin` and/or an option to include non-involution entries for diagnostics.
+
 1. Calibrate estimator on S6 using multiple sample sizes (`K=24,48,96,192`) and compute correction/confidence bands.
 2. Use calibrated estimator to forecast S7/S8 runtime with uncertainty.
 3. Keep `weighted` as default row schedule; add `auto` schedule selection if needed.

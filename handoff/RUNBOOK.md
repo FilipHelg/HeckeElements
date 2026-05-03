@@ -78,6 +78,32 @@ Estimator arguments:
 ./kl_structure_validate 6 S6_structure_constants_bulk_opt_parallel.csv --triple-legacy 694 688 324
 ```
 
+### 7) Dual Kazhdan–Lusztig (dual KL) utilities
+These are new PoC and bulk tools for computing dual KL basis elements (in Hecke H-basis) for involutions.
+
+Single-element PoC:
+```powershell
+./dual_kl_poc N X    # compute dual KL element D_X for S_N at Lehmer index X
+```
+
+Bulk generator (involutions only):
+```powershell
+./dual_kl_bulk N         # writes dual_kl_bulk_nN.bin containing sparse records for involutions
+./dual_kl_bulk N --bench  # prints timing; during compute prints progress every 5 involutions
+./dual_kl_bulk N --threads 8
+```
+
+Binary reader:
+```powershell
+./dual_kl_reader dual_kl_bulk_nN.bin       # dump all records
+./dual_kl_reader dual_kl_bulk_nN.bin --x 1234  # show only record for Lehmer index 1234
+```
+
+Notes:
+- `dual_kl_bulk` currently emits entries only for involutions (permutations equal to their inverse).
+- Progress messages are printed from the worker loop every 5 completed involutions.
+- The binary cache format is compact and intended for programmatic consumption; use `dual_kl_reader` to inspect contents.
+
 Validator arguments:
 - arg1: `n`
 - arg2: csv path

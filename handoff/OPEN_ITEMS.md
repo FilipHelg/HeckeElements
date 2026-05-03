@@ -42,3 +42,13 @@ Suggested actions:
 1. Add `--row-schedule auto` to select `block` vs `weighted` based on quick pilot samples.
 2. Profile memory bandwidth/cache behavior in multiply/decompose hot loops for S6+.
 3. Evaluate hybrid partitioning (weighted contiguous chunks + work stealing) for better balance at high thread counts.
+
+## 7) Dual KL utilities improvements
+Suggested follow-ups for the newly added dual KL tools (`dual_kl_poc`, `dual_kl_bulk`, `dual_kl_reader`):
+
+1. Make the progress reporting interval configurable (CLI flag `--progress-interval K`) instead of the current hard-coded 5.
+2. Add an option to `dual_kl_bulk` to emit all permutations (not just involutions) for diagnostic or publication purposes.
+3. Add a small index file for random access into `dual_kl_bulk_n<N>.bin` so `dual_kl_reader` can seek directly to a requested Lehmer index.
+4. Add unit tests that verify the writer/reader round-trip for small N (S3, S4).
+
+Rationale: these changes improve usability for debugging and for downstream consumers who need random-access or non-involution entries.
