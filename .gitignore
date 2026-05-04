@@ -3,4 +3,5 @@
 *.o
 *.csv
 *.bin
+*.png
 tmp_kl_parallel_*/

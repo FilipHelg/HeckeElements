@@ -751,7 +751,7 @@ int main(){
     }
 
     if(TEST_RSTABLEAUX){
-        int n = 8, pCount = 0, qCount = 0;
+        int n = 6, pCount = 0, qCount = 0;
         char P1[8][8], Q1[8][8], shape1[8], P2[8][8], Q2[8][8], shape2[8];
 
         //char Pbitmap[fac(n)][fac(n)], Qbitmap[fac(n)][fac(n)];

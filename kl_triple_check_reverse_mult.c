@@ -41,6 +41,8 @@ typedef struct {
     double multiplyTime;
     long compactFromSparseCount;
     double compactFromSparseTime;
+    long zeroProductSkipCount;
+    double zeroProductSkipTime;
     long compactEqualsCount;
     double compactEqualsTime;
     long writeTripleCount;
@@ -327,9 +329,10 @@ static void PrintTripleUsage(const char *prog) {
     printf("  %s n [--dual-bin PATH] [--kl-data PATH] [--out PATH]\n", prog);
     printf("\n");
     printf("Checks dKH_w * kH_x = dKH_w * kH_y for same-left-cell pairs x,y and involutions w.\n");
+    printf("Only reports triples where the product is NONZERO.\n");
     printf("Default dual cache: dual_kl_bulk_n<n>.bin\n");
     printf("Default KL data: S<n>.txt\n");
-    printf("Default output: kl_triple_matches_n<n>.csv\n");
+    printf("Default output: kl_triple_matches_nonzero_n<n>.csv\n");
     printf("Optional: --bench prints phase timings and extra progress info.\n");
 }
 
@@ -438,13 +441,22 @@ static int CompareBucketProducts(
         if (bench) {
             clock_t _s2 = clock();
             SparseClear(product);
-            MultiplyHeckeSparse(ctx, x, dw, kx, product, tmp1, tmp2, accum, NULL, 0);
+            MultiplyHeckeSparse(ctx, x, kx, dw, product, tmp1, tmp2, accum, NULL, 0);
             clock_t _e2 = clock();
             bench->multiplyCount++;
             bench->multiplyTime += (double)(_e2 - _s2) / (double)CLOCKS_PER_SEC;
         } else {
             SparseClear(product);
-            MultiplyHeckeSparse(ctx, x, dw, kx, product, tmp1, tmp2, accum, NULL, 0);
+            MultiplyHeckeSparse(ctx, x, kx, dw, product, tmp1, tmp2, accum, NULL, 0);
+        }
+
+        /* Early termination: if product is zero, mark it as such without expensive CompactFromSparse */
+        if (product->supportSize <= 0) {
+            memset(&products[i], 0, sizeof(CompactHecke));
+            if (bench) {
+                bench->zeroProductSkipCount++;
+            }
+            continue;
         }
 
         if (bench) {
@@ -471,7 +483,17 @@ static int CompareBucketProducts(
     }
 
     for (int i = 0; i < bucketSize; i++) {
+        /* Skip zero products */
+        if (products[i].supportSize <= 0) {
+            continue;
+        }
+
         for (int j = i + 1; j < bucketSize; j++) {
+            /* Skip zero products */
+            if (products[j].supportSize <= 0) {
+                continue;
+            }
+
             if (bench) {
                 bench->compactEqualsCount++;
             }
@@ -538,7 +560,7 @@ int main(int argc, char *argv[]) {
     char defaultOut[128];
     snprintf(defaultDual, sizeof(defaultDual), "dual_kl_bulk_n%d.bin", n);
     snprintf(defaultKlData, sizeof(defaultKlData), "S%d.txt", n);
-    snprintf(defaultOut, sizeof(defaultOut), "kl_triple_matches_n%d.csv", n);
+    snprintf(defaultOut, sizeof(defaultOut), "kl_triple_matches_reverse_mult_n%d.csv", n);
 
     if (!dualPath) {
         dualPath = defaultDual;
@@ -737,11 +759,14 @@ int main(int argc, char *argv[]) {
         fprintf(stderr, "Bench summary for compare phase:\n");
         fprintf(stderr, "  BuildKLElem: count=%ld time=%.6f s\n", benchStats.buildKLElemCount, benchStats.buildKLElemTime);
         fprintf(stderr, "  Multiply:    count=%ld time=%.6f s\n", benchStats.multiplyCount, benchStats.multiplyTime);
+        fprintf(stderr, "  ZeroSkip:    count=%ld (%.1f%% of products skipped CompactFromSparse)\n", 
+                benchStats.zeroProductSkipCount, 
+                benchStats.multiplyCount > 0 ? (100.0 * benchStats.zeroProductSkipCount / benchStats.multiplyCount) : 0.0);
         fprintf(stderr, "  CompactFrom: count=%ld time=%.6f s\n", benchStats.compactFromSparseCount, benchStats.compactFromSparseTime);
         fprintf(stderr, "  CompactEq:   count=%ld time=%.6f s\n", benchStats.compactEqualsCount, benchStats.compactEqualsTime);
         fprintf(stderr, "  WriteTriple: count=%ld time=%.6f s\n", benchStats.writeTripleCount, benchStats.writeTripleTime);
     }
-    printf("Processed %lld same-left-cell pairs and wrote matching triples to %s\n", (long long)pairCount, outputPath);
+    printf("Processed %lld same-left-cell pairs and wrote matching nonzero triples to %s\n", (long long)pairCount, outputPath);
 
     free(permTable);
     free(entries);
