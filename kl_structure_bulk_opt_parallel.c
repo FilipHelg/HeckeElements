@@ -21,6 +21,16 @@
 
 #include "lehmer.h"
 
+#ifndef DEBUG_SPARSE_PRINT
+#define DEBUG_SPARSE_PRINT 0
+#endif
+
+#if defined(__GNUC__) || defined(__clang__)
+#define MAYBE_UNUSED __attribute__((unused))
+#else
+#define MAYBE_UNUSED
+#endif
+
 typedef struct {
     int coeff[57];
     int minPos;
@@ -607,6 +617,113 @@ static void FprintPoly(FILE *f, const Poly57 *p) {
     }
 }
 
+/* Compare integers for ascending qsort ordering. */
+#if DEBUG_SPARSE_PRINT
+static int KLBulkCompareInt(const void *a, const void *b) {
+    const int ia = *(const int *)a;
+    const int ib = *(const int *)b;
+    return ia - ib;
+}
+
+/* Print reduced-word generators as comma-separated contents. */
+static void KLBulkPrintReducedWordContents(int n, int index) {
+    char expr[40] = {0};
+    int len = ReducedExpression(n, index, expr);
+    for (int i = 0; i < len; i++) {
+        if (i > 0) {
+            printf(",");
+        }
+        printf("%d", (int)expr[i]);
+    }
+}
+
+/* Shift polynomial exponents by "shift" in coefficient-array coordinates. */
+static void KLBulkShiftPolyByExponent(const Poly57 *src, int shift, Poly57 *dst) {
+    PolyZero(dst);
+    if (PolyIsZero(src)) {
+        return;
+    }
+
+    int seen = 0;
+    int minPos = 57;
+    int maxPos = -1;
+
+    for (int i = src->minPos; i <= src->maxPos; i++) {
+        int c = src->coeff[i];
+        if (c == 0) {
+            continue;
+        }
+
+        int j = i + shift;
+        if (j < 0 || j >= 57) {
+            continue;
+        }
+
+        dst->coeff[j] += c;
+        if (!seen) {
+            minPos = j;
+            maxPos = j;
+            seen = 1;
+        } else {
+            if (j < minPos) minPos = j;
+            if (j > maxPos) maxPos = j;
+        }
+    }
+
+    if (!seen) {
+        PolyZero(dst);
+        return;
+    }
+
+    dst->minPos = minPos;
+    dst->maxPos = maxPos;
+    PolyNormalize(dst);
+}
+
+/* Print sparse Hecke element as GAP-normalized linear combination of T(w). */
+static void KLBulkPrintSparseAsGapNormalized(const FastContext *ctx, const SparseHecke *h) {
+    if (h->supportSize <= 0) {
+        printf("0\n");
+        return;
+    }
+
+    int *indices = (int *)calloc((size_t)h->supportSize, sizeof(int));
+    if (!indices) {
+        printf("<out of memory while printing>\n");
+        return;
+    }
+
+    for (int i = 0; i < h->supportSize; i++) {
+        indices[i] = h->support[i];
+    }
+    qsort(indices, (size_t)h->supportSize, sizeof(int), KLBulkCompareInt);
+
+    for (int i = 0; i < h->supportSize; i++) {
+        int idx = indices[i];
+        Poly57 normalized;
+        KLBulkShiftPolyByExponent(&h->coeff[idx], ctx->lengths[idx], &normalized);
+
+        if (i > 0) {
+            printf(" + ");
+        }
+        if (normalized.minPos < normalized.maxPos) {
+            printf("(");
+            FprintPoly(stdout, &normalized);
+            printf(")");
+        } else {
+            FprintPoly(stdout, &normalized);
+        }
+
+        printf("*T(");
+        KLBulkPrintReducedWordContents(ctx->n, idx);
+        printf(")");
+    }
+    printf("\n");
+
+    free(indices);
+}
+#endif
+
 /* Append a polynomial string to a text buffer. */
 static int AppendPoly(TextBuffer *out, const Poly57 *p, size_t capLimit) {
     if (PolyIsZero(p)) {
@@ -925,7 +1042,7 @@ static void DenseAccumCommitToSparse(DenseAccum *a, SparseHecke *out) {
 }
 
 /* Initialize cache storage for repeated left-multiplications. */
-static int LeftMulCacheInit(LeftMulCache *cache, int count) {
+static int MAYBE_UNUSED LeftMulCacheInit(LeftMulCache *cache, int count) {
     const size_t budgetBytes = (size_t)256 * (size_t)1024 * (size_t)1024;
     size_t bytesPerSlot = (size_t)count * (sizeof(Poly57) + sizeof(int) + sizeof(int));
     if (bytesPerSlot == 0) {
@@ -981,7 +1098,7 @@ static int LeftMulCacheInit(LeftMulCache *cache, int count) {
 }
 
 /* Release left-multiplication cache storage. */
-static void LeftMulCacheFree(LeftMulCache *cache) {
+static void MAYBE_UNUSED LeftMulCacheFree(LeftMulCache *cache) {
     for (int s = 0; s < cache->slotCount; s++) {
         SparseFree(&cache->value[s]);
     }
@@ -993,7 +1110,7 @@ static void LeftMulCacheFree(LeftMulCache *cache) {
 }
 
 /* Get cached left-product or compute and store it. */
-static const SparseHecke *LeftMulGetCached(
+static MAYBE_UNUSED const SparseHecke *LeftMulGetCached(
     const FastContext *ctx,
     int rightId,
     int leftIndex,
@@ -1443,9 +1560,11 @@ static void MultiplySimpleGenerator(
 
     for (int p = 0; p < in->supportSize; p++) {
         int idx = in->support[p];
+        //printf("Hi I am idx: %d\n", idx);
         const Poly57 *poly = &in->coeff[idx];
 
         int comp = action[idx];
+        //printf("Hi I am comp: %d\n", comp);
         SparseAddPoly(out, comp, poly);
 
         if (!inc[idx]) {
@@ -1470,10 +1589,32 @@ static void LeftMultiplyByIndex(
     SparseHecke *a = result;
     SparseHecke *b = scratch;
 
+#if DEBUG_SPARSE_PRINT
+    {
+        printf("[LeftMultiplyByIndex] start, index=%d, len=%d\n", index, len);
+        printf("  a = ");
+        KLBulkPrintSparseAsGapNormalized(ctx, a);
+        printf("  b = ");
+        KLBulkPrintSparseAsGapNormalized(ctx, b);
+    }
+#endif
+
     for (int step = len - 1; step >= 0; step--) {
         int g = (int)ctx->exprG[(size_t)index * (size_t)ctx->maxLength + (size_t)step];
+#if DEBUG_SPARSE_PRINT
+        {
+            printf("[LeftMultiplyByIndex] step=%d, g=%d\n", step, g);
+            printf("    in  a = ");
+            KLBulkPrintSparseAsGapNormalized(ctx, a);
+        }
+#endif
         MultiplySimpleGenerator(ctx, g, a, b);
-
+#if DEBUG_SPARSE_PRINT
+        {
+            printf("    out b = ");
+            KLBulkPrintSparseAsGapNormalized(ctx, b);
+        }
+#endif
         SparseHecke *tmp = a;
         a = b;
         b = tmp;
@@ -1505,12 +1646,16 @@ static void MultiplyHeckeSparse(
 
     for (int lp = 0; lp < left->supportSize; lp++) {
         int i = left->support[lp];
+        //printf("Hi I am lp: %d\n", lp);
+        //printf("Hi I am i: %d\n", i);
         const Poly57 *scalar = &left->coeff[i];
         LeftMultiplyByIndex(ctx, i, right, tmp1, tmp2);
         const SparseHecke *lm = tmp1;
-
+        
         for (int rp = 0; rp < lm->supportSize; rp++) {
             int j = lm->support[rp];
+            //printf("Hi I am rp: %d\n", rp);
+            //printf("Hi I am j: %d\n", j);
             Poly57 scaled;
 
             if (benchEnabled) {

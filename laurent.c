@@ -20,9 +20,12 @@ int HasNonZero(const Laurent_t *p){
 
 // Prints a Laurent polynomial in the terminal. Mostly used inline for DisplayHecke.
 void DisplayLaurentPoly(Laurent_t poly){
+    printf("10\n");
     int first = 1;
+    printf("9\n");
     if(HasNonZero(&poly) == 0) printf("Zero polynomial!");
     for(int i = 0; i < 57; i++){
+        printf("10\n");
         if(poly.coeff[i] != 0){
             if(!first) printf(" + ");
             printf("%d*v^%d", poly.coeff[i], i - 28);
@@ -46,7 +49,7 @@ Laurent_t MultiplyLaurent(Laurent_t l1, Laurent_t l2){
     for(int i = 0; i < 57; i++){
         for(int j = 0; j < 57; j++){
             int index = i + j - 28;
-            if(index < 57) product.coeff[index] += l1.coeff[i]*l2.coeff[j]; // Undefined behaviour when i + j - 28 > 56, but this should not happen as max length of word in S_8 is 28    
+            if(index < 57) product.coeff[index] += l1.coeff[i]*l2.coeff[j]; // Undefined behaviour when i + j - 28 > 56, but this rarely happen as max length of word in S_8 is 28    
         }
     }
     return product;

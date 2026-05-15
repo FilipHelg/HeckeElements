@@ -59,8 +59,9 @@ static void BuildTableauKey(int n, int index, TableauKey *key) {
     char shape[8] = {0};
     (void)RSTableaux(n, index, P, Q, shape);
 
+    /* Left cells are defined by P-tableau only (not shape) */
     memcpy(key->bytes, P, sizeof(P));
-    memcpy(key->bytes + sizeof(P), shape, sizeof(shape));
+    /* Note: do NOT include shape; shape defines two-sided cells, not left cells */
 }
 
 static int CompareTableauEntry(const void *a, const void *b) {
@@ -335,6 +336,7 @@ static void PrintTripleUsage(const char *prog) {
     printf("Default dual cache: dual_kl_bulk_n<n>.bin\n");
     printf("Default KL data: S<n>.txt\n");
     printf("Default output: kl_triple_matches_nonzero_n<n>.csv\n");
+    printf("The program also re-verifies its own CSV output before exiting.\n");
     printf("Optional: --bench prints phase timings and extra progress info.\n");
 }
 
@@ -419,7 +421,8 @@ static int CompareBucketProducts(
     SparseHecke *tmp2,
     SparseHecke *kx,
     SparseHecke *product
-, CompareBenchStats *bench) {
+    , CompareBenchStats *bench,
+    int64_t *writtenTripleCountOut) {
     CompactHecke *products = (CompactHecke *)calloc((size_t)bucketSize, sizeof(CompactHecke));
     if (!products) {
         return 0;
@@ -515,6 +518,9 @@ static int CompareBucketProducts(
             if (bench) {
                 bench->writeTripleCount++;
             }
+            if (writtenTripleCountOut) {
+                (*writtenTripleCountOut)++;
+            }
 
             if (!WriteTriple(out, w, x, y, permTable, permStride)) {
                 for (int k = 0; k < bucketSize; k++) {
@@ -531,6 +537,146 @@ static int CompareBucketProducts(
     }
     free(products);
     (void)leftCache;
+    return 1;
+}
+
+static int VerifyTripleOutput(
+    const char *outputPath,
+    int n,
+    const FastContext *ctx,
+    const DualCache *dualCache,
+    DenseAccum *accum,
+    LeftMulCache *leftCache,
+    SparseHecke *tmp1,
+    SparseHecke *tmp2,
+    SparseHecke *kx,
+    SparseHecke *product,
+    int64_t expectedRows
+) {
+    FILE *in = fopen(outputPath, "r");
+    if (!in) {
+        fprintf(stderr, "Could not reopen output file %s for verification.\n", outputPath);
+        return 0;
+    }
+
+    TableauKey *keys = (TableauKey *)calloc((size_t)ctx->count, sizeof(TableauKey));
+    if (!keys) {
+        fprintf(stderr, "Out of memory while building tableau keys for verification.\n");
+        fclose(in);
+        return 0;
+    }
+
+    for (int i = 0; i < ctx->count; i++) {
+        BuildTableauKey(n, i, &keys[i]);
+    }
+
+    char line[1024];
+    if (!fgets(line, sizeof(line), in)) {
+        fprintf(stderr, "Verification failed: output file %s is empty.\n", outputPath);
+        free(keys);
+        fclose(in);
+        return 0;
+    }
+
+    int64_t rowsChecked = 0;
+    int failures = 0;
+
+    while (fgets(line, sizeof(line), in)) {
+        int w = -1;
+        int x = -1;
+        int y = -1;
+        if (sscanf(line, "%d,%d,%d", &w, &x, &y) != 3) {
+            fprintf(stderr, "Verification failed: could not parse CSV row: %s", line);
+            failures++;
+            continue;
+        }
+
+        if (w < 0 || w >= ctx->count || x < 0 || x >= ctx->count || y < 0 || y >= ctx->count) {
+            fprintf(stderr, "Verification failed: row has out-of-range indices (%d,%d,%d).\n", w, x, y);
+            failures++;
+            continue;
+        }
+
+        if (!dualCache->present[w]) {
+            fprintf(stderr, "Verification failed: row uses non-involution w=%d.\n", w);
+            failures++;
+            continue;
+        }
+
+        if (memcmp(keys[x].bytes, keys[y].bytes, sizeof(keys[x].bytes)) != 0) {
+            fprintf(stderr, "Verification failed: row (%d,%d,%d) does not stay in one left cell.\n", w, x, y);
+            failures++;
+            continue;
+        }
+
+        SparseClear(kx);
+        BuildKLElementSparse(ctx, x, kx);
+        SparseClear(product);
+        MultiplyHeckeSparse(ctx, x, &dualCache->records[w], kx, product, tmp1, tmp2, accum, NULL, 0);
+
+        CompactHecke px;
+        CompactHecke py;
+        if (!CompactFromSparse(product, &px)) {
+            fprintf(stderr, "Verification failed: could not compact product for row (%d,%d,%d).\n", w, x, y);
+            failures++;
+            continue;
+        }
+
+        if (px.supportSize <= 0) {
+            fprintf(stderr, "Verification failed: row (%d,%d,%d) has zero product.\n", w, x, y);
+            CompactFree(&px);
+            failures++;
+            continue;
+        }
+
+        SparseClear(kx);
+        BuildKLElementSparse(ctx, y, kx);
+        SparseClear(product);
+        MultiplyHeckeSparse(ctx, y, &dualCache->records[w], kx, product, tmp1, tmp2, accum, NULL, 0);
+
+        if (!CompactFromSparse(product, &py)) {
+            fprintf(stderr, "Verification failed: could not compact product for row (%d,%d,%d) at y.\n", w, x, y);
+            CompactFree(&px);
+            failures++;
+            continue;
+        }
+
+        if (py.supportSize <= 0) {
+            fprintf(stderr, "Verification failed: row (%d,%d,%d) has zero product at y.\n", w, x, y);
+            CompactFree(&px);
+            CompactFree(&py);
+            failures++;
+            continue;
+        }
+
+        if (!CompactEquals(&px, &py)) {
+            fprintf(stderr, "Verification failed: row (%d,%d,%d) does not satisfy equality.\n", w, x, y);
+            CompactFree(&px);
+            CompactFree(&py);
+            failures++;
+            continue;
+        }
+
+        CompactFree(&px);
+        CompactFree(&py);
+        rowsChecked++;
+    }
+
+    free(keys);
+    fclose(in);
+
+    if (expectedRows >= 0 && rowsChecked != expectedRows) {
+        fprintf(stderr, "Verification failed: CSV row count (%lld) differs from written triple count (%lld).\n",
+                (long long)rowsChecked, (long long)expectedRows);
+        failures++;
+    }
+
+    if (failures != 0) {
+        fprintf(stderr, "Verification summary: %d failures across %lld checked rows.\n", failures, (long long)rowsChecked);
+        return 0;
+    }
+
+    printf("Verified %lld nonzero matching triples in %s\n", (long long)rowsChecked, outputPath);
     return 1;
 }
 
@@ -713,25 +859,28 @@ int main(int argc, char *argv[]) {
         phaseStart = time(NULL);
     }
 
-    for (int i = 0; i < ctx.count; ) {
-        int j = i + 1;
-        while (j < ctx.count && memcmp(entries[i].key.bytes, entries[j].key.bytes, sizeof(entries[i].key.bytes)) == 0) {
-            j++;
+    int64_t writtenTripleCount = 0;
+
+    /* Iterate over involutions w first, then over left-cell buckets */
+    for (int w = 0; w < ctx.count; w++) {
+        if (!dualCache.present[w]) {
+            continue;
         }
 
-        int bucketSize = j - i;
-        if (bucketSize > 1) {
-            for (int w = 0; w < ctx.count; w++) {
-                if (!dualCache.present[w]) {
-                    continue;
-                }
+        for (int i = 0; i < ctx.count; ) {
+            int j = i + 1;
+            while (j < ctx.count && memcmp(entries[i].key.bytes, entries[j].key.bytes, sizeof(entries[i].key.bytes)) == 0) {
+                j++;
+            }
 
+            int bucketSize = j - i;
+            if (bucketSize > 1) {
                 processedTasks++;
                 if ((processedTasks % 5) == 0) {
                     fprintf(stderr, "Progress: processed %lld/%lld tasks (last w=%d)\n", (long long)processedTasks, (long long)totalTasks, w);
                 }
 
-                if (!CompareBucketProducts(out, &ctx, w, &dualCache.records[w], &entries[i], bucketSize, permTable, n + 1, &accum, &leftCache, &tmp1, &tmp2, &kxTemp, &product, bench ? &benchStats : NULL)) {
+                if (!CompareBucketProducts(out, &ctx, w, &dualCache.records[w], &entries[i], bucketSize, permTable, n + 1, &accum, &leftCache, &tmp1, &tmp2, &kxTemp, &product, bench ? &benchStats : NULL, &writtenTripleCount)) {
                     fprintf(stderr, "Failed while comparing bucket starting at %d for w=%d.\n", i, w);
                     SparseFree(&kxTemp);
                     SparseFree(&tmp1);
@@ -747,12 +896,27 @@ int main(int argc, char *argv[]) {
                     return 1;
                 }
             }
-        }
 
-        i = j;
+            i = j;
+        }
     }
 
     fclose(out);
+
+    if (!VerifyTripleOutput(outputPath, n, &ctx, &dualCache, &accum, &leftCache, &tmp1, &tmp2, &kxTemp, &product, writtenTripleCount)) {
+        SparseFree(&kxTemp);
+        SparseFree(&tmp1);
+        SparseFree(&tmp2);
+        SparseFree(&product);
+        DenseAccumFree(&accum);
+        LeftMulCacheFree(&leftCache);
+        free(permTable);
+        free(entries);
+        DualCacheFree(&dualCache);
+        FreeContext(&ctx);
+        return 1;
+    }
+
     if (bench) {
         phaseEnd = time(NULL);
         fprintf(stderr, "Phase done: Comparing buckets (%.0f s). Total tasks processed: %lld\n", difftime(phaseEnd, phaseStart), (long long)processedTasks);

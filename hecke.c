@@ -19,8 +19,11 @@ void SetToZero(int n, Laurent_t H[]){
 // Prints out a Hecke element in the terminal
 void DisplayHecke(int count, Laurent_t* element){
     int first = 1;
+    printf("4\n");
     for(int i = 0; i < count; i++){
+        printf("5\n");
         if(HasNonZero(&element[i])){
+            printf("6\n");
             if(!first) printf(" + ");
             printf("(");
             DisplayLaurentPoly(element[i]);
@@ -68,9 +71,10 @@ Laurent_t* MultiplyHecke(int n, Laurent_t H1[], Laurent_t H2[]){
     Laurent_t* term = (Laurent_t*)calloc((size_t)tgamma(n + 1), sizeof(Laurent_t));
     Laurent_t id = ZeroInitializeLaurent();
     id.coeff[28] = 1;
+    printf("1\n");
     for(int i = 0; i < tgamma(n+1); i++){
         if(HasNonZero(&H1[i]) == 0){/*printf("H[%d] has coefficient zero\n", i);*/ continue;} //Skip when coefficient is zero
-
+        printf("2\n");
         char* generators = (char*)calloc(28, sizeof(char));
         int expression[28];
         ReducedExpression(n, i, generators);
@@ -83,7 +87,7 @@ Laurent_t* MultiplyHecke(int n, Laurent_t H1[], Laurent_t H2[]){
         term = H2; // start out the next term of the product as all of H2
         for(int k = 27; k >= 0; k--){ // Multiply successively with generators
             int generator = expression[k];
-
+            printf("3\n");
             //Debug
             //printf("Current generator is %d\n", generator);
 
@@ -395,7 +399,7 @@ Laurent_t* MultiplyHecke2(int n, Laurent_t H1[], Laurent_t H2[]){
 }
 
 #define TEST_INDEXTOPERM 0
-#define TEST_REDUCEDEXPRESSION 0
+#define TEST_REDUCEDEXPRESSION 1
 #define TEST_MULTIPLYINDEX 0
 #define TEST_LAURENT 0
 #define TEST_DISPLAYHECKE 0
@@ -411,7 +415,8 @@ Laurent_t* MultiplyHecke2(int n, Laurent_t H1[], Laurent_t H2[]){
 #define TEST_ELEMENTSBETWEEN2 0
 #define TEST_FINDKLP 0
 #define TEST_RSSHAPE 0
-#define TEST_RSTABLEAUX 1
+#define TEST_RSTABLEAUX 0
+#define TEST_RSTABLEAUXS5 0
 
 int main(){
     
@@ -444,8 +449,17 @@ int main(){
         for(int i = 0; i < 28; i++) if(generators[i] != 0) printf("%d", generators[i]);
         printf("\nNote that the first element in the array is the last to be multiplied with when multiplying from the left\n");
 
+        n = 3;
+        x = 4;
+        ReducedExpression(n, x, generators);
+        printf("The reduced expression for Lehmer index %d is ", x);
+        for(int i = 0; i < 28; i++) if(generators[i] != 0) printf("%d", generators[i]);
+        printf("\nNote that the first element in the array is the last to be multiplied with when multiplying from the left\n");
+
         for(int l = 0; l < 28; l++) if(generators[l] != 0) expression[l] = fac(n - generators[l]); else expression[l] = 0;
         for(int i = 0; i < 28; i++) if(expression != 0) printf("%d ", expression[i]);
+
+
     }
 
     if(TEST_MULTIPLYINDEX){
@@ -527,10 +541,12 @@ int main(){
     /// Test of MultiplyHecke ///
 
     if(TEST_MULTHECKE){
-        int n = 8; // Determines S_n
+        int n = 5; // Determines S_n
         int count = fac(n);
+        printf("7\n");
         Laurent_t *h1 = (Laurent_t*)calloc((size_t)count, sizeof(Laurent_t)), *h2 = (Laurent_t*)calloc((size_t)count, sizeof(Laurent_t));
-
+        printf("8\n");
+        printf("%d, %d\n", sizeof(Laurent_t), count);
         //Initialize 1
         h1[0].coeff[29] = 1;
         h1[1].coeff[28] = 1;
@@ -774,6 +790,35 @@ int main(){
             if(i%100 == 0) printf("%d\n", i);
         }
         printf("P-count = %d, Q-count = %d\n", pCount, qCount);
+    }
+
+    if(TEST_RSTABLEAUXS5){
+        int n = 5;
+        char P1[8][8], Q1[8][8], shape1[8], P2[8][8], Q2[8][8], shape2[8];
+
+        int x = 1;
+        int y = 9;
+
+        DisplayTableaux(n, x);
+        DisplayTableaux(n, y);
+
+        x = 4;
+        y = 8;
+
+        DisplayTableaux(n, x);
+        DisplayTableaux(n, y);
+
+        x = 18;
+        y = 6;
+
+        DisplayTableaux(n, x);
+        DisplayTableaux(n, y);
+
+        x = 96;
+        y = 48;
+
+        DisplayTableaux(n, x);
+        DisplayTableaux(n, y);
     }
 
     /*RFilePointer = fopen("RPolyFile", "wb");
